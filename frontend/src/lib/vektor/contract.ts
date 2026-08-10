@@ -86,7 +86,9 @@ function mapMarket(value: unknown, summary = false): Market {
     category: m.category === "METAL" ? "METAL" : "FX",
     referenceDate: text(m.reference_date),
     targetDate: text(m.target_date),
-    targetEnd: timestamp(m.target_end),
+    // get_markets exposes the same boundary as `settlement_eligible`; the
+    // detailed get_market view exposes it as `target_end`.
+    targetEnd: timestamp(m.target_end ?? m.settlement_eligible),
     settlementEligibleAt: timestamp(m.settlement_eligible ?? m.target_end),
     createdAt: timestamp(m.created),
     status: m.status,

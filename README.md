@@ -92,27 +92,27 @@ proportional share of the total pool.
 
 ```mermaid
 flowchart LR
-    A[Market created] --> B[Betting open]
-    B --> C[Prediction Day live]
-    C --> D[Prediction Day ends]
-    D --> E[Ready to settle]
-    E --> F[Validator verification]
-    F --> G{Outcome}
-    G -->|UP| H[Claim payout]
+    A["Market created"] --> B["Betting open"]
+    B --> C["Prediction Day live"]
+    C --> D["Prediction Day ends"]
+    D --> E["Ready to settle"]
+    E --> F["Validator verification"]
+    F --> G{"Outcome"}
+    G -->|UP| H["Claim payout"]
     G -->|DOWN| H
-    G -->|Refund| I[Claim refund]
+    G -->|Refund| I["Claim refund"]
 ```
 
 ## Market Time Model
 
 ```mermaid
 flowchart TD
-    A[Previous trading day] --> B[Reference price]
-    C[Market created] --> D[Betting open]
-    D --> E[Prediction Day starts at 00:00 UTC]
+    A["Previous trading day"] --> B["Reference price"]
+    C["Market created"] --> D["Betting open"]
+    D --> E["Prediction Day starts at 00:00 UTC"]
     B --> E
-    E --> F[24-hour Prediction Day]
-    F --> G[Ready to settle]
+    E --> F["24-hour Prediction Day"]
+    F --> G["Ready to settle"]
 ```
 
 Markets are created with a canonical `YYYY-MM-DD` Prediction Day. The contract
@@ -144,14 +144,14 @@ than silently closing the market.
 
 ```mermaid
 flowchart TD
-    A[settle_market(market_id)] --> B[GenLayer validator execution]
-    B --> C[FXRatesAPI direction]
-    B --> D[Fawaz direction]
-    C --> E{Directions agree?}
+    A["settle_market(market_id)"] --> B["GenLayer validator execution"]
+    B --> C["FXRatesAPI direction"]
+    B --> D["Fawaz direction"]
+    C --> E{"Directions agree?"}
     D --> E
-    E -->|UP| F[Close market as UP]
-    E -->|DOWN| G[Close market as DOWN]
-    E -->|No| H[Close market as Refund]
+    E -->|UP| F["Close market as UP"]
+    E -->|DOWN| G["Close market as DOWN"]
+    E -->|No| H["Close market as Refund"]
 ```
 
 If a directional result has no stake on the winning side, the contract changes
@@ -250,15 +250,15 @@ contract state.
 
 ```mermaid
 flowchart TB
-    U[User] --> F[Vektor Frontend]
-    F --> W[Injected Wallet and GenLayerJS]
-    W --> C[Vektor Intelligent Contract]
-    C --> V[GenLayer Validators]
-    V --> S1[FXRatesAPI]
-    V --> S2[Fawaz Currency API]
+    U["User"] --> F["Vektor Frontend"]
+    F --> W["Injected Wallet and GenLayerJS"]
+    W --> C["Vektor Intelligent Contract"]
+    C --> V["GenLayer Validators"]
+    V --> S1["FXRatesAPI"]
+    V --> S2["Fawaz Currency API"]
     S1 --> V
     S2 --> V
-    M[FXRatesAPI live prices] --> F
+    M["FXRatesAPI live prices"] --> F
 ```
 
 The wallet/GenLayerJS path reads and writes contract state. The FXRatesAPI
