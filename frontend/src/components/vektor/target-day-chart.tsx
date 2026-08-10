@@ -5,13 +5,12 @@ import { formatMarketDataPrice } from "@/lib/market-data/normalize";
 import { aggregateCandles } from "@/lib/market-data/candles";
 import {
   livePricesQuery,
-  marketAnchorQuery,
-  rollingMarketSeriesQuery,
+  marketHistoryQuery,
+  referencePriceQuery,
   targetDayQuery,
 } from "@/lib/market-data/queries";
 import type { Candle, PriceSample } from "@/lib/market-data/types";
 
-const HISTORY_MS = 24 * 60 * 60_000;
 const CANDLE_MINUTES = 5;
 
 function utcLabel(value: number) {
@@ -47,10 +46,8 @@ export function TargetDayChart({ market }: { market: Market }) {
     };
   }, [targetEndMs, targetMs]);
 
-  const seriesQuery = useQuery(rollingMarketSeriesQuery(market.instrument));
-  const anchorQuery = useQuery(
-    marketAnchorQuery(market.instrument, market.targetDate, targetStarted && !complete),
-  );
+  const seriesQuery = useQuery(marketHistoryQuery(market.instrument, market.createdAt));
+  const referenceQuery = useQuery(referencePriceQuery(market.instrument, market.referenceDate));
   const completedDayQuery = useQuery(
     targetDayQuery(market.instrument, market.targetDate, market.targetEnd, complete),
   );
@@ -81,34 +78,32 @@ export function TargetDayChart({ market }: { market: Market }) {
           price: live.price,
           raw: live.raw,
         },
-      ].filter((point) => point.timestamp >= Date.now() - HISTORY_MS);
+      ];
       return next.sort((a, b) => a.timestamp - b.timestamp);
     });
   }, [live]);
 
-  const visibleStart = now - HISTORY_MS;
   const points = useMemo(() => {
     const byTimestamp = new Map<number, PriceSample>();
     for (const point of [...(seriesQuery.data ?? []), ...liveSamples]) {
-      if (point.timestamp >= visibleStart && point.timestamp <= now)
-        byTimestamp.set(point.timestamp, point);
+      if (point.timestamp <= now) byTimestamp.set(point.timestamp, point);
     }
     return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);
-  }, [liveSamples, now, seriesQuery.data, visibleStart]);
+  }, [liveSamples, now, seriesQuery.data]);
 
-  const dayStart = complete
-    ? (completedDayQuery.data?.dayStart ?? null)
-    : (anchorQuery.data?.find((point) => point.timestamp >= targetMs) ?? null);
+  const reference = referenceQuery.data ?? null;
   const dayEnd = complete ? (completedDayQuery.data?.dayEnd ?? null) : null;
   const current = live
     ? { timestamp: new Date(live.updatedAt).getTime(), price: live.price, raw: live.raw }
     : (points.at(-1) ?? null);
   const comparison = complete ? dayEnd : current;
   const delta =
-    targetStarted && dayStart && comparison ? BigInt(comparison.raw) - BigInt(dayStart.raw) : null;
+    targetStarted && reference && comparison
+      ? BigInt(comparison.raw) - BigInt(reference.raw)
+      : null;
   const absoluteMove = delta === null ? null : Number(delta) / 1_000_000_000_000;
   const movePct =
-    delta !== null && dayStart ? Number((delta * 10_000n) / BigInt(dayStart.raw)) / 100 : null;
+    delta !== null && reference ? Number((delta * 10_000n) / BigInt(reference.raw)) / 100 : null;
   const direction =
     delta === null ? null : delta > 0n ? "UP today" : delta < 0n ? "DOWN today" : "FLAT today";
   const candles = aggregateCandles(points, CANDLE_MINUTES);
@@ -122,7 +117,7 @@ export function TargetDayChart({ market }: { market: Market }) {
           <h2 className="mt-1 text-base font-semibold text-foreground">Live market</h2>
         </div>
         <span className="label-xs rounded-md border border-border bg-background px-2.5 py-1">
-          5m candles · 24h
+          5m candles
         </span>
       </div>
 
@@ -131,14 +126,16 @@ export function TargetDayChart({ market }: { market: Market }) {
           label="Current"
           value={formatMarketDataPrice(market.instrument, current?.price)}
         />
+        {reference && (
+          <ChartMetric
+            label="Reference"
+            value={formatMarketDataPrice(market.instrument, reference.price)}
+          />
+        )}
         {targetStarted ? (
           <>
             <ChartMetric
-              label="Day open"
-              value={formatMarketDataPrice(market.instrument, dayStart?.price)}
-            />
-            <ChartMetric
-              label={complete ? "Target-day move" : "Move"}
+              label={complete ? "Prediction-day move" : "Move"}
               value={
                 movePct == null || absoluteMove == null
                   ? "—"
@@ -147,7 +144,7 @@ export function TargetDayChart({ market }: { market: Market }) {
               tone={delta == null ? undefined : delta >= 0n ? "up" : "down"}
             />
             <ChartMetric
-              label={complete ? "Target-day direction" : "Today"}
+              label={complete ? "Prediction-day direction" : "Today"}
               value={direction ?? "—"}
               tone={
                 direction === "DOWN today" ? "down" : direction === "UP today" ? "up" : undefined
@@ -156,14 +153,14 @@ export function TargetDayChart({ market }: { market: Market }) {
           </>
         ) : (
           <span className="text-muted-foreground">
-            Target day starts {formatUtcDate(targetMs)} · 00:00 UTC
+            Prediction day starts {formatUtcDate(targetMs)} · 00:00 UTC
           </span>
         )}
         <span className="ml-auto inline-flex items-center gap-1.5 text-muted-foreground">
           <span
             className={`h-1.5 w-1.5 rounded-full ${liveStatus === "Live" && liveQuery.isFetching ? "animate-pulse bg-primary" : liveStatus === "Live" ? "bg-primary" : "bg-muted-foreground"}`}
           />
-          {complete ? "Target day complete" : liveStatus}
+          {complete ? "Prediction day complete" : liveStatus}
         </span>
       </div>
 
@@ -186,7 +183,7 @@ export function TargetDayChart({ market }: { market: Market }) {
             <CandleChart
               candles={candles}
               instrument={market.instrument}
-              dayStart={targetStarted ? dayStart : null}
+              reference={reference}
               targetMs={targetMs}
               current={current}
               hovered={hovered}
@@ -198,7 +195,7 @@ export function TargetDayChart({ market }: { market: Market }) {
             <span>
               {complete && dayEnd
                 ? `Day end · ${formatMarketDataPrice(market.instrument, dayEnd.price)}`
-                : "Live target-day movement is separate from the final Vektor market result."}
+                : "Live price movement is separate from the final Vektor market result."}
             </span>
           </div>
         </>
@@ -210,7 +207,7 @@ export function TargetDayChart({ market }: { market: Market }) {
 function CandleChart({
   candles,
   instrument,
-  dayStart,
+  reference,
   targetMs,
   current,
   hovered,
@@ -218,7 +215,7 @@ function CandleChart({
 }: {
   candles: Candle[];
   instrument: Instrument;
-  dayStart: PriceSample | null;
+  reference: PriceSample | null;
   targetMs: number;
   current: PriceSample | null;
   hovered: number | null;
@@ -236,12 +233,12 @@ function CandleChart({
   const visibleEnd = candles.at(-1)?.timestamp ?? 0;
   const minimum = Math.min(
     ...candles.map((candle) => candle.low),
-    ...(dayStart ? [dayStart.price] : []),
+    ...(reference ? [reference.price] : []),
     ...(current ? [current.price] : []),
   );
   const maximum = Math.max(
     ...candles.map((candle) => candle.high),
-    ...(dayStart ? [dayStart.price] : []),
+    ...(reference ? [reference.price] : []),
     ...(current ? [current.price] : []),
   );
   const spread = maximum - minimum || Math.max(maximum * 0.001, 0.000001);
@@ -331,22 +328,22 @@ function CandleChart({
             fill="var(--primary)"
             fontSize="11"
           >
-            Target day starts
+            Prediction day starts
           </text>
         </g>
       )}
-      {dayStart && (
+      {reference && (
         <g>
           <line
             x1={left}
             x2={left + plotWidth}
-            y1={y(dayStart.price)}
-            y2={y(dayStart.price)}
+            y1={y(reference.price)}
+            y2={y(reference.price)}
             stroke="var(--primary)"
             strokeDasharray="4 4"
           />
-          <text x={left + 4} y={y(dayStart.price) - 5} fill="var(--primary)" fontSize="11">
-            Day open {formatMarketDataPrice(instrument, dayStart.price)}
+          <text x={left + 4} y={y(reference.price) - 5} fill="var(--primary)" fontSize="11">
+            Reference {formatMarketDataPrice(instrument, reference.price)}
           </text>
         </g>
       )}

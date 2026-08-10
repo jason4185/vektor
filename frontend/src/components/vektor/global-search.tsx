@@ -49,21 +49,20 @@ export function GlobalSearch({ className }: { className?: string }) {
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Search by instrument, question or market id…" />
+        <CommandInput placeholder="Search by instrument or question…" />
         <CommandList>
           <CommandEmpty>No markets match that query.</CommandEmpty>
           <CommandGroup heading="Markets">
             {markets.map((m) => (
               <CommandItem
                 key={m.id}
-                value={`${m.id} ${m.instrument} ${m.question}`}
+                value={`${m.instrument} ${m.question}`}
                 onSelect={() => {
                   setOpen(false);
                   navigate({ to: "/market/$id", params: { id: m.id } });
                 }}
                 className="gap-3"
               >
-                <span className="num w-20 shrink-0 text-xs text-muted-foreground">{m.id}</span>
                 <span className="min-w-0 flex-1 truncate">
                   <span className="font-semibold">{m.instrument}</span>
                   <span className="text-muted-foreground"> · {formatDate(m.targetDate)}</span>

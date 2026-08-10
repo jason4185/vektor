@@ -165,7 +165,7 @@ function ActivityPage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-foreground">{market.instrument}</div>
                   <div className="text-xs text-muted-foreground">
-                    Target {formatDate(market.targetDate)}
+                    Prediction day {formatDate(market.targetDate)}
                   </div>
                 </div>
                 <Button
@@ -260,7 +260,7 @@ function ActivityRow({
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-foreground">{item.title}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">
-          {item.instrument} · {item.side} · {formatGen(item.stake)} GEN · Target{" "}
+          {item.instrument} · {item.side} · {formatGen(item.stake)} GEN · Prediction day{" "}
           {formatDate(item.targetDate)}
         </div>
       </div>

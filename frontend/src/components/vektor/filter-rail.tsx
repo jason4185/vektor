@@ -95,7 +95,8 @@ export function FilterRail({
           <Zap className="h-4 w-4 text-primary" />
           <h4 className="mt-2 text-sm font-semibold text-foreground">Create a market</h4>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Choose an instrument and date. Vektor uses the previous weekday for comparison.
+            Choose an instrument and prediction day. Vektor uses the previous trading day for
+            comparison.
           </p>
           <Button asChild size="sm" className="mt-3 w-full gap-1.5">
             <Link to="/create">

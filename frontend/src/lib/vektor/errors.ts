@@ -63,7 +63,7 @@ export function formatValidationReason(reason: string) {
     case "NON_WEEKDAY_DATE":
       return "Choose a weekday. Vektor markets can be created from Monday through Friday.";
     case "INVALID_TARGET_DATE":
-      return "Choose a valid target date.";
+      return "Choose a valid prediction day.";
     case "TARGET_OUTSIDE_CREATION_WINDOW":
       return "Choose a future weekday within the allowed date range.";
     case "DUPLICATE_MARKET":
@@ -71,6 +71,6 @@ export function formatValidationReason(reason: string) {
     case "UNSUPPORTED_INSTRUMENT":
       return "Choose one of the supported Vektor markets.";
     default:
-      return "Choose a valid target date to continue.";
+      return "Choose a valid prediction day to continue.";
   }
 }

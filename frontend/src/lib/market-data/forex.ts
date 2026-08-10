@@ -83,6 +83,18 @@ export async function fetchTargetDaySeries(
   };
 }
 
+export async function fetchReferencePrice(
+  instrument: Instrument,
+  referenceDate: string,
+  signal?: AbortSignal,
+): Promise<PriceSample | null> {
+  const start = new Date(`${referenceDate}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start.getTime() + 24 * 60 * 60_000);
+  const points = await fetchPriceSeries(instrument, start, end, signal);
+  return points.filter((point) => point.timestamp < end.getTime()).at(-1) ?? null;
+}
+
 export async function fetchPriceSeries(
   instrument: Instrument,
   start: Date,
@@ -116,7 +128,7 @@ export async function fetchPriceSeries(
   for (const rates of responses) {
     for (const [timestamp, rawRates] of Object.entries(rates)) {
       const time = new Date(timestamp).getTime();
-      if (!Number.isFinite(time) || time < start.getTime() || time > end.getTime()) continue;
+      if (!Number.isFinite(time) || time < start.getTime() || time >= end.getTime()) continue;
       const nested = requireRates(rawRates);
       const scaled = normalizeRate(instrument, nested[providerCurrency(instrument)]);
       if (scaled !== null)

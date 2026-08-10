@@ -57,7 +57,7 @@ export function deriveActivityItem(position: Position): ActivityItem | null {
           : "finished";
   const title: Record<ActivityKind, string> = {
     prediction: "Prediction",
-    live: "Target day live",
+    live: "Prediction day live",
     ready: "Ready to settle",
     payout: "Payout available",
     refund: "Refund available",

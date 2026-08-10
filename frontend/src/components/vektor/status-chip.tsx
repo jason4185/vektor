@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { DisplayStatus, MarketStatus, Outcome, UserResult } from "@/lib/vektor/types";
+import { statusLabel } from "@/lib/vektor/timing";
 
 const base =
   "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]";
@@ -18,16 +19,7 @@ export function StatusChip({
   displayStatus?: DisplayStatus;
   className?: string;
 }) {
-  const label =
-    displayStatus === "OBSERVATION_ACTIVE"
-      ? "Target day live"
-      : displayStatus === "READY_FOR_SETTLEMENT"
-        ? "Ready to settle"
-        : displayStatus === "INCONCLUSIVE"
-          ? "Refund"
-          : displayStatus === "SETTLED" || status === "CLOSED"
-            ? "Settled"
-            : "Betting open";
+  const label = statusLabel(status, displayStatus);
   return (
     <span className={cn(base, statusStyles[status], className)}>
       {status === "OPEN" &&
@@ -50,7 +42,11 @@ const outcomeStyles: Record<Outcome, string> = {
 };
 
 export function OutcomeChip({ outcome, className }: { outcome: Outcome; className?: string }) {
-  return <span className={cn(base, outcomeStyles[outcome], className)}>{outcome}</span>;
+  return (
+    <span className={cn(base, outcomeStyles[outcome], className)}>
+      {outcome === "INCONCLUSIVE" ? "Refund" : outcome}
+    </span>
+  );
 }
 
 const positionStyles: Record<UserResult, string> = {

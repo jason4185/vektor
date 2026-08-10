@@ -21,6 +21,8 @@ import { formatWalletError } from "@/lib/vektor/errors";
 import { SideChip } from "./status-chip";
 import { TransactionModal } from "./transaction-modal";
 import { parseUnits } from "viem";
+import { timingCopy } from "@/lib/vektor/timing";
+import { useMarketTiming } from "@/lib/vektor/use-market-timing";
 
 export function TradeTicket({ market, className }: { market: Market; className?: string }) {
   const { address, status: walletStatus, connect } = useWallet();
@@ -32,6 +34,7 @@ export function TradeTicket({ market, className }: { market: Market; className?:
 
   const { data: existingBet } = useQuery(userBetQuery(market.id, address));
   const { data: remaining = 0 } = useQuery(remainingCapacityQuery(market.id, address));
+  const timing = useMarketTiming(market);
 
   useEffect(() => {
     if (existingBet?.side === "UP" || existingBet?.side === "DOWN") setSide(existingBet.side);
@@ -39,13 +42,13 @@ export function TradeTicket({ market, className }: { market: Market; className?:
 
   const numeric = Number(amount);
   const valid = Number.isFinite(numeric) && numeric > 0;
-  const bettingOpen = market.status === "OPEN" && market.displayStatus === "BETTING_OPEN";
+  const bettingOpen = market.status === "OPEN" && timing.bettingOpen;
   const closed = !bettingOpen;
   const lockedSide =
     existingBet && existingBet.stake > 0 && existingBet.side !== "NONE" ? existingBet.side : null;
 
   const error = useMemo(() => {
-    if (closed) return "Market closed.";
+    if (closed) return null;
     if (!valid) return null;
     if (numeric < 1) return "Minimum stake is 1 GEN.";
     if (numeric > remaining) return `Only ${formatGen(remaining)} GEN of wallet capacity remains.`;
@@ -128,21 +131,26 @@ export function TradeTicket({ market, className }: { market: Market; className?:
         <div className="space-y-4 p-4">
           <div className="rounded-xl border border-border bg-surface-raised p-4">
             <div className="label-xs">
-              {market.displayStatus === "OBSERVATION_ACTIVE"
+              {timing.status === "OBSERVATION_ACTIVE"
                 ? "Betting ended"
-                : market.displayStatus === "READY_FOR_SETTLEMENT"
+                : timing.status === "READY_FOR_SETTLEMENT"
                   ? "Ready for settlement"
-                  : market.displayStatus === "INCONCLUSIVE"
+                  : timing.status === "INCONCLUSIVE"
                     ? "Refund available"
                     : "Market settled"}
             </div>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              {market.displayStatus === "OBSERVATION_ACTIVE"
-                ? "The target day is in progress. No new predictions can be placed."
-                : market.displayStatus === "READY_FOR_SETTLEMENT"
+              {timing.status === "OBSERVATION_ACTIVE"
+                ? "Prediction day is live. No new predictions can be placed."
+                : timing.status === "READY_FOR_SETTLEMENT"
                   ? "Anyone can settle this market once the result is ready."
                   : "New predictions are no longer available for this market."}
             </p>
+            {timing.countdown && (
+              <p className="mt-2 text-xs text-primary">
+                {timingCopy(timing.status, timing.countdown)}
+              </p>
+            )}
           </div>
           {existingBet && existingBet.stake > 0 && existingBet.side !== "NONE" && (
             <div className="rounded-lg border border-border bg-background px-3 py-3">
@@ -164,7 +172,9 @@ export function TradeTicket({ market, className }: { market: Market; className?:
     <div className={cn("panel overflow-hidden", className)}>
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <span className="label-xs">Choose a side</span>
-        <span className="num text-xs text-muted-foreground">{market.id}</span>
+        <span className="text-xs text-muted-foreground">
+          {timingCopy(timing.status, timing.countdown)}
+        </span>
       </div>
 
       <div className="space-y-4 p-4">

@@ -56,11 +56,11 @@ function MarketsHome() {
           <div className="min-w-0">
             <div className="label-xs mb-2 text-primary">Vektor markets</div>
             <h1 className="text-[1.75rem] font-bold tracking-[-0.04em] text-foreground sm:text-3xl">
-              Daily directional markets
+              Daily FX & Metals Markets
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              Choose whether FX or metals will finish UP or DOWN compared with the previous weekday.
-              Stake GEN and share the pool if your side wins.
+              Predict whether each market will finish UP or DOWN compared with the previous trading
+              day. Stake GEN and share the pool if your side wins.
             </p>
           </div>
           <dl className="grid grid-cols-3 gap-4 border-t border-border pt-4 sm:flex sm:gap-8 sm:border-t-0 sm:pt-0">

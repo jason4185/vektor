@@ -153,7 +153,7 @@ function Portfolio() {
                     {p.market.instrument}
                   </Link>
                   <div className="truncate text-xs text-muted-foreground">
-                    {formatDate(p.market.targetDate)} · {p.market.id}
+                    Prediction day · {formatDate(p.market.targetDate)}
                   </div>
                 </div>
                 <div>

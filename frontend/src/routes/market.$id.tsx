@@ -14,6 +14,9 @@ import { userStatusQuery } from "@/lib/vektor/queries";
 import { vektorContract } from "@/lib/vektor/contract";
 import { useWallet } from "@/lib/vektor/wallet";
 import { formatWalletError } from "@/lib/vektor/errors";
+import { LifecycleTimeline } from "@/components/vektor/market-timing";
+import { formatUtcDateOnly, timingCopy } from "@/lib/vektor/timing";
+import { useMarketTiming } from "@/lib/vektor/use-market-timing";
 import type { WriteResult } from "@/lib/vektor/types";
 import {
   bpsToPct,
@@ -43,6 +46,7 @@ function MarketDetail() {
   const { id } = Route.useParams();
   const { data: market, isPending, isError, refetch } = useQuery(marketQuery(id));
   const { data: protocol } = useQuery(protocolConfigQuery());
+  const timing = useMarketTiming(market ?? null);
 
   if (isPending) {
     return (
@@ -78,15 +82,26 @@ function MarketDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="num text-sm font-bold text-foreground">{market.instrument}</span>
               <span className="label-xs">{meta.klass === "fx" ? "FX" : "Metals"}</span>
-              <StatusChip status={market.status} displayStatus={market.displayStatus} />
+              <StatusChip status={market.status} displayStatus={timing.status} />
               {market.outcome !== "NONE" && <OutcomeChip outcome={market.outcome} />}
-              <span className="num ml-auto text-xs text-muted-foreground">{market.id}</span>
             </div>
 
             <h1 className="mt-4 max-w-3xl text-xl font-bold leading-snug tracking-[-0.03em] text-foreground sm:text-[1.65rem]">
               {market.question}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">{meta.blurb}</p>
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>{timingCopy(timing.status, timing.countdown)}</span>
+              {timing.status === "BETTING_OPEN" && (
+                <span>
+                  Prediction day starts{" "}
+                  {formatUtcDateOnly(Date.parse(`${market.targetDate}T00:00:00Z`))} · 00:00 UTC
+                </span>
+              )}
+            </div>
+            <div className="mt-4 overflow-x-auto border-t border-border pt-3">
+              <LifecycleTimeline status={timing.status} />
+            </div>
 
             <div className="mt-6">
               <ProbabilityBar upBps={market.upBps} downBps={market.downBps} />
@@ -112,11 +127,11 @@ function MarketDetail() {
             />
             <SnapshotRow label="Total pool" value={`${formatGen(pool)} GEN`} />
             <SnapshotRow
-              label="Previous weekday"
+              label="Previous trading day"
               value={`${formatDate(market.referenceDate)} · ${formatPrice(market.instrument, market.referencePrice)}`}
             />
             <SnapshotRow
-              label="Target date"
+              label="Prediction day"
               value={`${formatDate(market.targetDate)} · ${formatPrice(market.instrument, market.targetPrice)}`}
             />
             <SnapshotRow
@@ -130,13 +145,17 @@ function MarketDetail() {
           <div className="space-y-3">
             <Disclosure title="Market rules" eyebrow="How it works" defaultOpen>
               <p>
-                This market compares {market.instrument} on the target date with the previous
-                weekday, {formatDate(market.referenceDate)}. That comparison date is set when the
-                market is created and cannot be changed.
+                This market compares {market.instrument} on the prediction day with the previous
+                trading day, {formatDate(market.referenceDate)}. That comparison date is set when
+                the market is created and cannot be changed.
               </p>
               <ul className="list-disc space-y-1.5 pl-5">
-                <li>UP wins if the target price is higher than the previous weekday.</li>
-                <li>DOWN wins if the target price is lower than the previous weekday.</li>
+                <li>
+                  UP wins if the prediction-day price is higher than the previous trading day.
+                </li>
+                <li>
+                  DOWN wins if the prediction-day price is lower than the previous trading day.
+                </li>
                 <li>
                   Stake GEN, minimum {protocol?.minStake ?? 1} and maximum{" "}
                   {protocol?.maxStakePerWallet ?? 10} per wallet per market.
@@ -152,7 +171,7 @@ function MarketDetail() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <SourceCard
                   name="FXRatesAPI"
-                  detail="Checks the previous weekday and target date, then compares the two prices."
+                  detail="Checks the previous trading day and prediction day, then compares the two prices."
                 />
                 <SourceCard
                   name="Fawaz Currency API"
@@ -167,8 +186,8 @@ function MarketDetail() {
               {market.evidence && <EvidenceBlock evidence={market.evidence} />}
               <p className="flex items-start gap-2 rounded-lg border border-primary/25 bg-primary/[0.07] px-3 py-2 text-primary">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                If the sources disagree or a price is missing, the result is INCONCLUSIVE instead of
-                a guess.
+                If the sources disagree or a price is missing, you receive a refund instead of a
+                guess.
               </p>
             </Disclosure>
 
@@ -177,16 +196,16 @@ function MarketDetail() {
                 <TimelineStep
                   step="01"
                   title="Listed"
-                  detail={`${formatDateTime(market.createdAt)} — compared with the previous weekday, ${formatDate(market.referenceDate)}.`}
+                  detail={`${formatDateTime(market.createdAt)} — compared with the previous trading day, ${formatDate(market.referenceDate)}.`}
                 />
                 <TimelineStep
                   step="02"
                   title="Choose a side"
-                  detail="Stake GEN on UP or DOWN until the target date begins."
+                  detail="Stake GEN on UP or DOWN until prediction day begins."
                 />
                 <TimelineStep
                   step="03"
-                  title="Target date ends"
+                  title="Prediction day ends"
                   detail={formatDateTime(market.targetEnd)}
                 />
                 <TimelineStep
@@ -202,18 +221,18 @@ function MarketDetail() {
               </ol>
             </Disclosure>
 
-            <Disclosure title="Risks & inconclusive conditions" eyebrow="Read before staking">
+            <Disclosure title="Risks & refund conditions" eyebrow="Read before staking">
               <ul className="list-disc space-y-1.5 pl-5">
                 <li>
-                  A market is INCONCLUSIVE when the sources disagree, a price is missing, or the
+                  A market receives a refund when the sources disagree, a price is missing, or the
                   result cannot be confirmed.
                 </li>
                 <li>
-                  INCONCLUSIVE refunds every original stake in full. Nobody wins and nobody loses.
+                  A refund returns every original stake in full. Nobody wins and nobody loses.
                 </li>
                 <li>
-                  An exact flat close (target equal to reference) is not a directional outcome and
-                  resolves INCONCLUSIVE.
+                  An exact flat close (prediction-day price equal to reference) is not a directional
+                  outcome and receives a refund.
                 </li>
                 <li>
                   Payouts change as the pool fills. Any amount shown before the result is an
@@ -256,7 +275,7 @@ function MarketDetail() {
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <div className="label-xs truncate">
-              {market.instrument} · {formatDate(market.targetDate)}
+              {market.instrument} · Prediction day {formatDate(market.targetDate)}
             </div>
             <div className="num text-sm font-semibold text-foreground">
               <span className="text-up">{bpsToPct(market.upBps, 0)}</span>
@@ -308,6 +327,7 @@ function MarketActions({ market }: { market: import("@/lib/vektor/types").Market
   const { address, connect } = useWallet();
   const queryClient = useQueryClient();
   const { data: user } = useQuery(userStatusQuery(market.id, address));
+  const timing = useMarketTiming(market);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const canClaim = Boolean(user?.can_claim);
@@ -336,7 +356,7 @@ function MarketActions({ market }: { market: import("@/lib/vektor/types").Market
       }
       setMessage(
         result.confirmed && reconciled
-          ? `${success} Reference: ${result.hash.slice(0, 10)}…`
+          ? `${success} Transaction: ${result.hash.slice(0, 10)}…`
           : "Submitted. Vektor is still confirming the transaction.",
       );
     } catch (error) {
@@ -345,10 +365,11 @@ function MarketActions({ market }: { market: import("@/lib/vektor/types").Market
       setBusy(false);
     }
   }
-  if (!market.settlementReady && !canClaim) return null;
+  const settlementReady = market.settlementReady || timing.status === "READY_FOR_SETTLEMENT";
+  if (!settlementReady && !canClaim) return null;
   return (
     <div className="panel mt-4 space-y-3 p-4">
-      {market.settlementReady && (
+      {settlementReady && (
         <Button
           className="w-full"
           disabled={busy}

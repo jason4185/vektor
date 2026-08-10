@@ -4,13 +4,15 @@ import { cn } from "@/lib/utils";
 import type { Market } from "@/lib/vektor/types";
 import { bpsToPct, formatDate, formatGen, formatPrice, instrumentMeta } from "@/lib/vektor/format";
 import { OutcomeChip, StatusChip } from "./status-chip";
+import { formatUtcDateOnly, statusLabel, timingCopy } from "@/lib/vektor/timing";
+import { useMarketTiming } from "@/lib/vektor/use-market-timing";
 import { ProbabilityBar } from "./probability";
 import { LivePrice } from "./live-price";
 
 export function MarketCard({ market }: { market: Market }) {
   const meta = instrumentMeta(market.instrument);
   const pool = market.upPool + market.downPool;
-  const closed = market.status === "CLOSED";
+  const timing = useMarketTiming(market);
 
   return (
     <Link
@@ -25,13 +27,22 @@ export function MarketCard({ market }: { market: Market }) {
               {market.instrument}
             </span>
             <span className="label-xs">{meta.klass === "fx" ? "FX" : "Metals"}</span>
-            <StatusChip status={market.status} displayStatus={market.displayStatus} />
+            <StatusChip status={market.status} displayStatus={timing.status} />
             {market.outcome !== "NONE" && <OutcomeChip outcome={market.outcome} />}
           </div>
 
           <h3 className="mt-2 line-clamp-2 text-[0.95rem] font-medium leading-snug text-foreground/95 transition-colors group-hover:text-foreground">
             {market.question}
           </h3>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>{timingCopy(timing.status, timing.countdown)}</span>
+            {timing.status === "BETTING_OPEN" && (
+              <span>
+                Prediction day starts{" "}
+                {formatUtcDateOnly(Date.parse(`${market.targetDate}T00:00:00Z`))} · 00:00 UTC
+              </span>
+            )}
+          </div>
           <div className="mt-3 sm:hidden">
             <LivePrice instrument={market.instrument} />
           </div>
@@ -47,27 +58,14 @@ export function MarketCard({ market }: { market: Market }) {
 
       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
         <Cell label="Total pool" value={`${formatGen(pool)} GEN`} />
-        <Cell label="Previous weekday" value={market.referenceDate} />
-        <Cell label="Target" value={formatDate(market.targetDate)} />
-        <Cell
-          label="Status"
-          value={
-            market.displayStatus === "OBSERVATION_ACTIVE"
-              ? "Target day live"
-              : market.displayStatus === "READY_FOR_SETTLEMENT"
-                ? "Ready to settle"
-                : market.displayStatus === "INCONCLUSIVE"
-                  ? "Refund"
-                  : market.displayStatus === "SETTLED" || market.status === "CLOSED"
-                    ? "Settled"
-                    : "Betting open"
-          }
-        />
+        <Cell label="Previous trading day" value={formatDate(market.referenceDate)} />
+        <Cell label="Prediction day" value={formatDate(market.targetDate)} />
+        <Cell label="Status" value={statusLabel(market.status, timing.status)} />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <SideAffordance side="UP" bps={market.upBps} disabled={closed} />
-        <SideAffordance side="DOWN" bps={market.downBps} disabled={closed} />
+        <SideAffordance side="UP" bps={market.upBps} disabled={!timing.bettingOpen} />
+        <SideAffordance side="DOWN" bps={market.downBps} disabled={!timing.bettingOpen} />
       </div>
     </Link>
   );

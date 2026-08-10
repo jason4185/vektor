@@ -1,6 +1,11 @@
 import { queryOptions } from "@tanstack/react-query";
 import type { Instrument } from "@/lib/vektor/types";
-import { fetchLivePrices, fetchPriceSeries, fetchTargetDaySeries } from "./forex";
+import {
+  fetchLivePrices,
+  fetchPriceSeries,
+  fetchReferencePrice,
+  fetchTargetDaySeries,
+} from "./forex";
 
 const retry = 2;
 const base = { retry, refetchOnWindowFocus: true } as const;
@@ -15,36 +20,37 @@ export const livePricesQuery = () =>
     placeholderData: (previous) => previous,
   });
 
-export const rollingMarketSeriesQuery = (instrument: Instrument, enabled = true) => {
+export const marketHistoryQuery = (instrument: Instrument, createdAt: string, enabled = true) => {
+  const created = new Date(createdAt);
   return queryOptions({
     ...base,
-    enabled,
-    queryKey: ["marketData", "rolling-series", instrument, "24h"],
+    enabled: enabled && !Number.isNaN(created.getTime()),
+    queryKey: ["marketData", "history", instrument, createdAt],
     queryFn: ({ signal }) => {
       const end = new Date();
-      const start = new Date(end.getTime() - 24 * 60 * 60_000);
-      return fetchPriceSeries(instrument, start, end, signal);
+      return fetchPriceSeries(instrument, created, end, signal);
     },
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
     refetchInterval: false,
     placeholderData: (previous) => previous,
   });
 };
 
-export const marketAnchorQuery = (instrument: Instrument, targetDate: string, enabled: boolean) => {
-  const target = new Date(`${targetDate}T00:00:00.000Z`);
-  const end = new Date(target.getTime() + 15 * 60_000);
-  return queryOptions({
+export const referencePriceQuery = (
+  instrument: Instrument,
+  referenceDate: string,
+  enabled = true,
+) =>
+  queryOptions({
     ...base,
-    enabled: enabled && !Number.isNaN(target.getTime()),
-    queryKey: ["marketData", "anchor", instrument, targetDate],
-    queryFn: ({ signal }) => fetchPriceSeries(instrument, target, end, signal),
+    enabled: enabled && Boolean(referenceDate),
+    queryKey: ["marketData", "reference", instrument, referenceDate],
+    queryFn: ({ signal }) => fetchReferencePrice(instrument, referenceDate, signal),
     staleTime: Infinity,
-    gcTime: 24 * 60 * 60_000,
+    gcTime: 7 * 24 * 60 * 60_000,
     refetchOnWindowFocus: false,
     refetchInterval: false,
   });
-};
 
 export const targetDayQuery = (
   instrument: Instrument,

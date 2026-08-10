@@ -34,7 +34,7 @@ function HowItWorks() {
       </h1>
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
         Vektor makes daily markets simple: choose whether an instrument will finish UP or DOWN
-        compared with the previous weekday.
+        compared with the previous trading day.
       </p>
 
       <div className="mt-7 grid gap-3 sm:grid-cols-4">
@@ -51,8 +51,8 @@ function HowItWorks() {
       <div className="mt-8 grid gap-3 lg:grid-cols-2">
         <Disclosure title="Choose a market" eyebrow="Step 01" defaultOpen>
           <p>
-            Pick GBP/USD, USD/JPY, Gold, or Silver. Choose a weekday target date. Vektor compares it
-            with the previous weekday.
+            Pick GBP/USD, USD/JPY, Gold, or Silver. Choose a prediction day. Vektor compares it with
+            the previous trading day.
           </p>
         </Disclosure>
 
@@ -66,21 +66,21 @@ function HowItWorks() {
 
         <Disclosure title="See the market result" eyebrow="Step 03">
           <p>
-            After the target date ends, anyone can settle the market. FXRatesAPI and Fawaz each
-            check the prices for both dates and decide UP or DOWN from their own data.
+            After prediction day ends, anyone can settle the market. FXRatesAPI and Fawaz each check
+            the prices for both dates and decide UP or DOWN from their own data.
           </p>
           <p>
             GenLayer helps verify the result with more than one source, so no single person decides
             the outcome. Both sources must agree. If they disagree or the result cannot be
-            confirmed, the market is INCONCLUSIVE.
+            confirmed, you receive a refund.
           </p>
         </Disclosure>
 
         <Disclosure title="Claim your payout" eyebrow="Step 04">
           <p>
-            Winners share the full pool based on how much they staked. If the result is
-            INCONCLUSIVE, every original stake can be refunded. Claim your payout when the market is
-            finished.
+            Winners share the full pool based on how much they staked. If the result is If the
+            result cannot be confirmed, every original stake can be refunded. Claim your payout when
+            the market is finished.
           </p>
         </Disclosure>
       </div>

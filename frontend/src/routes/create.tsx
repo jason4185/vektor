@@ -13,7 +13,7 @@ import {
   supportedMarketsQuery,
   validateCreationQuery,
 } from "@/lib/vektor/queries";
-import { formatDate, toIsoDate } from "@/lib/vektor/format";
+import { formatDate, formatDateTime, toIsoDate } from "@/lib/vektor/format";
 import { formatValidationReason, formatWalletError } from "@/lib/vektor/errors";
 import type { Instrument, TxState } from "@/lib/vektor/types";
 import { useWallet } from "@/lib/vektor/wallet";
@@ -25,12 +25,12 @@ export const Route = createFileRoute("/create")({
       { title: "Create a market — Vektor" },
       {
         name: "description",
-        content: "Create a Vektor market by choosing an instrument and a target date.",
+        content: "Create a Vektor market by choosing an instrument and a prediction day.",
       },
       { property: "og:title", content: "Create a market — Vektor" },
       {
         property: "og:description",
-        content: "Choose an instrument and target date for a daily UP/DOWN market.",
+        content: "Choose an instrument and prediction day for a daily UP/DOWN market.",
       },
     ],
   }),
@@ -120,7 +120,8 @@ function CreateMarket() {
         Create a daily market
       </h1>
       <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        Choose an instrument and date. Vektor uses the previous weekday for comparison.
+        Choose an instrument and prediction day. Vektor uses the previous trading day for
+        comparison.
       </p>
 
       <div className="mt-7 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -157,7 +158,7 @@ function CreateMarket() {
           </section>
 
           <section className="panel p-5 sm:p-6">
-            <span className="label-xs">2 · Target date</span>
+            <span className="label-xs">2 · Prediction day</span>
             <div className="mt-3">
               <Popover>
                 <PopoverTrigger asChild>
@@ -169,7 +170,7 @@ function CreateMarket() {
                     )}
                   >
                     <CalendarIcon className="h-4 w-4" />
-                    {date ? format(date, "PPP") : "Pick a target date"}
+                    {date ? format(date, "PPP") : "Pick a prediction day"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -192,10 +193,13 @@ function CreateMarket() {
             <span className="label-xs">3 · Market preview</span>
             <div className="mt-3 divide-y divide-border rounded-xl border border-border bg-background">
               <PreviewRow
-                label="Previous weekday"
+                label="Previous trading day"
                 value={validation?.reference_date ? formatDate(validation.reference_date) : "—"}
               />
-              <PreviewRow label="Target date" value={targetDate ? formatDate(targetDate) : "—"} />
+              <PreviewRow
+                label="Prediction day"
+                value={targetDate ? formatDate(targetDate) : "—"}
+              />
               <PreviewRow
                 label="Ready to settle"
                 value={
@@ -206,7 +210,7 @@ function CreateMarket() {
                 <div className="label-xs">Market question</div>
                 <p className="mt-2 text-sm font-medium leading-snug text-foreground">
                   {validation?.question ||
-                    "Select an instrument and a valid weekday to preview the market question."}
+                    "Select an instrument and a valid prediction day to preview the market question."}
                 </p>
               </div>
             </div>
@@ -227,7 +231,7 @@ function CreateMarket() {
             <div className="flex items-start gap-2 rounded-xl border border-up/30 bg-up/10 px-4 py-3 text-sm text-up">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                {tx.message} Reference: {tx.hash?.slice(0, 10)}…
+                {tx.message} Transaction: {tx.hash?.slice(0, 10)}…
               </span>
             </div>
           )}
@@ -261,18 +265,26 @@ function CreateMarket() {
             <div className="mt-4 border-b border-border pb-5">
               <div className="num text-sm font-semibold text-foreground">{instrument}</div>
               <div className="mt-2 text-lg font-semibold leading-snug text-foreground">
-                {validation?.question || "Select a valid target date"}
+                {validation?.question || "Select a valid prediction day"}
               </div>
             </div>
             <div className="mt-4 space-y-3 text-xs">
               <PreviewRow label="Instrument" value={instrument} />
               <PreviewRow
-                label="Reference"
+                label="Previous trading day"
                 value={validation?.reference_date ? formatDate(validation.reference_date) : "—"}
               />
-              <PreviewRow label="Target" value={targetDate ? formatDate(targetDate) : "—"} />
+              <PreviewRow
+                label="Prediction day"
+                value={targetDate ? formatDate(targetDate) : "—"}
+              />
               <PreviewRow label="Type" value="Daily directional" />
             </div>
+            {targetDate && (
+              <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+                Betting will remain open until {formatDateTime(`${targetDate}T00:00:00Z`)}.
+              </p>
+            )}
             <div
               className={cn(
                 "mt-5 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
@@ -290,9 +302,9 @@ function CreateMarket() {
               <span className="label-xs">Market rules</span>
             </div>
             <ul className="mt-3 space-y-2 text-xs leading-relaxed text-muted-foreground">
-              <li>Target date must be a future weekday within the allowed date range.</li>
+              <li>Prediction day must be a future weekday within the allowed date range.</li>
               <li>Only one market can exist for each instrument and date.</li>
-              <li>Vektor uses the previous weekday for comparison.</li>
+              <li>Vektor uses the previous trading day for comparison.</li>
               <li>
                 Creating a market has no extra fee. The creator has no special rights over it.
               </li>
