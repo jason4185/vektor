@@ -22,10 +22,3 @@ export function aggregateCandles(points: PriceSample[], bucketMinutes: number): 
   }
   return [...buckets.values()].sort((a, b) => a.timestamp - b.timestamp);
 }
-
-export function bucketMinutesForRange(range: "1H" | "3H" | "6H" | "1D") {
-  if (range === "1D") return 15;
-  if (range === "6H") return 5;
-  if (range === "3H") return 3;
-  return 1;
-}
