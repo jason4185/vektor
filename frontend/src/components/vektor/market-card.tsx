@@ -1,11 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowDownRight, ArrowUpRight, Users } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Market } from "@/lib/vektor/types";
 import { bpsToPct, formatDate, formatGen, formatPrice, instrumentMeta } from "@/lib/vektor/format";
 import { OutcomeChip, StatusChip } from "./status-chip";
 import { ProbabilityBar } from "./probability";
-import { Sparkline } from "./sparkline";
+import { LivePrice } from "./live-price";
 
 export function MarketCard({ market }: { market: Market }) {
   const meta = instrumentMeta(market.instrument);
@@ -16,7 +16,7 @@ export function MarketCard({ market }: { market: Market }) {
     <Link
       to="/market/$id"
       params={{ id: market.id }}
-      className="group panel block p-4 transition-all duration-200 hover:border-border-strong hover:bg-surface-raised"
+      className="group panel block p-4 transition-all duration-200 hover:border-border-strong hover:bg-surface-raised sm:p-5"
     >
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
@@ -25,45 +25,49 @@ export function MarketCard({ market }: { market: Market }) {
               {market.instrument}
             </span>
             <span className="label-xs">{meta.klass === "fx" ? "FX" : "Metals"}</span>
-            <StatusChip status={market.status} />
-            {market.outcome && <OutcomeChip outcome={market.outcome} />}
+            <StatusChip status={market.status} displayStatus={market.displayStatus} />
+            {market.outcome !== "NONE" && <OutcomeChip outcome={market.outcome} />}
           </div>
 
           <h3 className="mt-2 line-clamp-2 text-[0.95rem] font-medium leading-snug text-foreground/95 transition-colors group-hover:text-foreground">
             {market.question}
           </h3>
+          <div className="mt-3 sm:hidden">
+            <LivePrice instrument={market.instrument} />
+          </div>
         </div>
-
-        <div className="hidden w-28 shrink-0 sm:block">
-          <Sparkline
-            data={market.series}
-            tone={market.lastPrice >= (market.referencePrice ?? 0) ? "up" : "down"}
-          />
+        <div className="hidden shrink-0 sm:block">
+          <LivePrice instrument={market.instrument} />
         </div>
       </div>
 
       <div className="mt-4">
-        <ProbabilityBar upBps={market.upBps} />
+        <ProbabilityBar upBps={market.upBps} downBps={market.downBps} />
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4">
-        <Cell label="Pool" value={`${formatGen(pool)} GEN`} />
-        <Cell label="Reference" value={formatPrice(market.instrument, market.referencePrice)} />
-        <Cell label="Target date" value={formatDate(market.targetDate)} />
+        <Cell label="Total pool" value={`${formatGen(pool)} GEN`} />
+        <Cell label="Previous weekday" value={market.referenceDate} />
+        <Cell label="Target" value={formatDate(market.targetDate)} />
         <Cell
-          label="Traders"
+          label="Status"
           value={
-            <span className="inline-flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5 text-muted-foreground" />
-              {market.bettors}
-            </span>
+            market.displayStatus === "OBSERVATION_ACTIVE"
+              ? "Target day live"
+              : market.displayStatus === "READY_FOR_SETTLEMENT"
+                ? "Ready to settle"
+                : market.displayStatus === "INCONCLUSIVE"
+                  ? "Refund"
+                  : market.displayStatus === "SETTLED" || market.status === "CLOSED"
+                    ? "Settled"
+                    : "Betting open"
           }
         />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <SideAffordance side="UP" bps={market.upBps} disabled={closed} />
-        <SideAffordance side="DOWN" bps={10000 - market.upBps} disabled={closed} />
+        <SideAffordance side="DOWN" bps={market.downBps} disabled={closed} />
       </div>
     </Link>
   );
@@ -102,7 +106,7 @@ function SideAffordance({
         <Icon className="h-4 w-4" />
         {side}
       </span>
-      <span className="num">{bpsToPct(bps, 0)}</span>
+      <span className="num">{bps === 0 ? "—" : bpsToPct(bps, 0)}</span>
     </div>
   );
 }

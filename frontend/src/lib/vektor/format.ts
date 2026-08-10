@@ -1,75 +1,79 @@
-import type { Instrument } from "./types";
-import { INSTRUMENTS } from "./mock-data";
+import type { Instrument, InstrumentMeta } from "./types";
 
-export function instrumentMeta(symbol: Instrument) {
-  return INSTRUMENTS.find((i) => i.symbol === symbol)!;
+const META: Record<
+  Instrument,
+  { decimals: number; name: string; klass: "fx" | "metals"; blurb: string }
+> = {
+  "GBP/USD": {
+    decimals: 6,
+    name: "Sterling / Dollar",
+    klass: "fx",
+    blurb: "A daily GBP/USD market.",
+  },
+  "USD/JPY": {
+    decimals: 3,
+    name: "Dollar / Yen",
+    klass: "fx",
+    blurb: "A daily USD/JPY market.",
+  },
+  "XAU/USD": {
+    decimals: 6,
+    name: "Gold / Dollar",
+    klass: "metals",
+    blurb: "A daily gold market.",
+  },
+  "XAG/USD": {
+    decimals: 6,
+    name: "Silver / Dollar",
+    klass: "metals",
+    blurb: "A daily silver market.",
+  },
+};
+export function instrumentMeta(symbol: Instrument, supported?: InstrumentMeta[]) {
+  const found = supported?.find((m) => m.instrument === symbol);
+  return {
+    ...META[symbol],
+    ...(found ?? {}),
+    klass:
+      found?.category === "METAL" ? "metals" : found?.category === "FX" ? "fx" : META[symbol].klass,
+  };
 }
-
 export function formatPrice(symbol: Instrument, value: number | null | undefined) {
-  if (value === null || value === undefined) return "—";
-  return value.toFixed(instrumentMeta(symbol).decimals);
+  return value == null ? "—" : value.toFixed(META[symbol].decimals);
 }
-
 export function formatGen(value: number, digits = 2) {
-  return `${value.toLocaleString("en-US", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })}`;
+  return `${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
-
 export function bpsToPct(bps: number, digits = 1) {
   return `${(bps / 100).toFixed(digits)}%`;
 }
-
 export function formatDate(iso: string) {
   const d = new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso);
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      });
 }
-
 export function formatDateTime(iso: string) {
   const d = new Date(iso);
-  return `${d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-  })} · ${d.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "UTC",
-  })} UTC`;
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })} · ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC`;
 }
-
-export function relativeTime(iso: string, now = new Date("2026-08-11T09:00:00Z")) {
-  const diff = now.getTime() - new Date(iso).getTime();
-  const mins = Math.round(diff / 60000);
+export function relativeTime(iso: string) {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (Math.abs(mins) < 60) return `${mins}m ago`;
   const hours = Math.round(mins / 60);
   if (Math.abs(hours) < 24) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
 }
-
-/**
- * Pari-mutuel projection: winners split the entire pool pro-rata.
- * Returns the gross payout for `stake` on `side` given current pools.
- */
-export function projectPayout(
-  upPool: number,
-  downPool: number,
-  side: "UP" | "DOWN",
-  stake: number,
-) {
-  if (stake <= 0) return 0;
-  const sidePool = (side === "UP" ? upPool : downPool) + stake;
-  const total = upPool + downPool + stake;
-  return (stake / sidePool) * total;
-}
-
 export function toIsoDate(d: Date) {
-  const p = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

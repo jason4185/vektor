@@ -1,22 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Disclosure } from "@/components/vektor/disclosure";
-import { INSTRUMENTS, PROTOCOL_CONFIG } from "@/lib/vektor/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { protocolConfigQuery, supportedMarketsQuery } from "@/lib/vektor/queries";
 
 export const Route = createFileRoute("/how-it-works")({
   head: () => ({
     meta: [
-      { title: "How Vektor works — settlement by validator consensus" },
+      { title: "How Vektor works — simple daily markets" },
       {
         name: "description",
         content:
-          "How Vektor derives reference dates, prices daily UP/DOWN markets pari-mutuel, and settles through GenLayer validator consensus over two independent price sources.",
+          "Learn how Vektor compares daily FX and metals markets, decides results, and pays winners.",
       },
       { property: "og:title", content: "How Vektor works" },
       {
         property: "og:description",
-        content:
-          "Reference-date derivation, pari-mutuel payouts and validator-consensus settlement, explained.",
+        content: "Choose a market, stake GEN, and claim your payout or refund.",
       },
     ],
   }),
@@ -24,72 +24,72 @@ export const Route = createFileRoute("/how-it-works")({
 });
 
 function HowItWorks() {
+  const { data: instruments = [] } = useQuery(supportedMarketsQuery());
+  const { data: protocol } = useQuery(protocolConfigQuery());
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-      <h1 className="text-3xl font-bold tracking-[-0.03em] text-foreground">How Vektor works</h1>
+    <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="label-xs text-primary">Protocol guide</div>
+      <h1 className="mt-2 text-3xl font-bold tracking-[-0.04em] text-foreground">
+        How Vektor works
+      </h1>
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-        Vektor turns one honest question into a daily market: did this instrument finish the session
-        above or below its previous weekday reference? No operator sets the line, no operator calls
-        the result.
+        Vektor makes daily markets simple: choose whether an instrument will finish UP or DOWN
+        compared with the previous weekday.
       </p>
 
-      <div className="mt-8 grid gap-3 sm:grid-cols-2">
-        {INSTRUMENTS.map((i) => (
-          <div key={i.symbol} className="panel p-4">
-            <div className="num text-sm font-bold text-foreground">{i.symbol}</div>
-            <div className="mt-1 text-xs text-muted-foreground">{i.name}</div>
+      <div className="mt-7 grid gap-3 sm:grid-cols-4">
+        {instruments.map((i) => (
+          <div key={i.instrument} className="panel p-4">
+            <div className="num text-sm font-bold text-foreground">{i.instrument}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {i.category === "METAL" ? "Metals" : "FX"}
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-8 space-y-3">
-        <Disclosure title="Listing a market" eyebrow="Step 01" defaultOpen>
+      <div className="mt-8 grid gap-3 lg:grid-cols-2">
+        <Disclosure title="Choose a market" eyebrow="Step 01" defaultOpen>
           <p>
-            You pick an instrument and a weekday target session. The contract derives the reference
-            date itself — the weekday immediately preceding the target — so the comparison window
-            can never be gamed by the creator. The question text is generated on-chain and is
-            immutable.
+            Pick GBP/USD, USD/JPY, Gold, or Silver. Choose a weekday target date. Vektor compares it
+            with the previous weekday.
           </p>
         </Disclosure>
 
-        <Disclosure title="Taking a position" eyebrow="Step 02">
+        <Disclosure title="Choose UP or DOWN" eyebrow="Step 02">
           <p>
-            Stake native GEN on UP or DOWN, minimum {PROTOCOL_CONFIG.minStake} and maximum{" "}
-            {PROTOCOL_CONFIG.maxStakePerWallet} per wallet per market. You can top up the same side
-            as often as you like within that cap. A bet on the opposite side from the same wallet is
-            rejected outright — positions are directional, not hedged.
+            Stake GEN on UP or DOWN. The minimum is {protocol?.minStake ?? 1} GEN and the maximum is{" "}
+            {protocol?.maxStakePerWallet ?? 10} GEN per market. You can add more to the same side,
+            but you cannot choose both sides.
           </p>
         </Disclosure>
 
-        <Disclosure title="Settlement and consensus" eyebrow="Step 03">
+        <Disclosure title="See the market result" eyebrow="Step 03">
           <p>
-            After the target session closes and the settlement window opens, any wallet can trigger
-            settlement. Two independent sources — FXRatesAPI and the Fawaz historical currency data
-            — each retrieve their <em>own</em> reference-session and target-session values and each
-            derive a direction from their own numbers.
+            After the target date ends, anyone can settle the market. FXRatesAPI and Fawaz each
+            check the prices for both dates and decide UP or DOWN from their own data.
           </p>
           <p>
-            GenLayer validators independently rerun that evidence gathering rather than trusting a
-            single fetch. The market resolves UP or DOWN only when both source directions agree and
-            validators reach consensus on that agreement. Anything else resolves INCONCLUSIVE.
+            GenLayer helps verify the result with more than one source, so no single person decides
+            the outcome. Both sources must agree. If they disagree or the result cannot be
+            confirmed, the market is INCONCLUSIVE.
           </p>
         </Disclosure>
 
-        <Disclosure title="Payouts" eyebrow="Step 04">
+        <Disclosure title="Claim your payout" eyebrow="Step 04">
           <p>
-            Payouts are pari-mutuel: the winning side splits the entire pool pro-rata by stake, so
-            your effective odds depend on how the pool filled, not on a quoted price at entry. An
-            INCONCLUSIVE resolution refunds every original stake in full. Claims are pull-based —
-            call claim_payout when you're ready.
+            Winners share the full pool based on how much they staked. If the result is
+            INCONCLUSIVE, every original stake can be refunded. Claim your payout when the market is
+            finished.
           </p>
         </Disclosure>
       </div>
 
-      <div className="panel mt-8 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="panel mt-8 flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-foreground">Ready to take a side?</h2>
+          <h2 className="text-base font-semibold text-foreground">Ready to choose a side?</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Today's sessions are already live on the book.
+            Browse today's markets and make your prediction.
           </p>
         </div>
         <Button asChild className="shrink-0 font-semibold">

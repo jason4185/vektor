@@ -46,16 +46,18 @@ export function EmptyState({
   description,
   action,
   className,
+  icon,
 }: {
   title: string;
   description: string;
   action?: React.ReactNode;
   className?: string;
+  icon?: React.ReactNode;
 }) {
   return (
     <div className={cn("panel flex flex-col items-center px-6 py-16 text-center", className)}>
       <div className="grid h-11 w-11 place-items-center rounded-xl border border-border bg-surface-raised">
-        <Inbox className="h-5 w-5 text-muted-foreground" />
+        {icon ?? <Inbox className="h-5 w-5 text-muted-foreground" />}
       </div>
       <h3 className="mt-4 text-base font-semibold text-foreground">{title}</h3>
       <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">{description}</p>
@@ -65,8 +67,8 @@ export function EmptyState({
 }
 
 export function ErrorState({
-  title = "Couldn't reach the network",
-  description = "The contract view didn't respond. Retry the request or check your connection.",
+  title = "We couldn't load this page",
+  description = "This page could not load. Try again or check your connection.",
   onRetry,
 }: {
   title?: string;

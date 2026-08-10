@@ -19,18 +19,18 @@ export function CategoryNav({
   onChange: (key: CategoryKey) => void;
 }) {
   return (
-    <div className="border-b border-border bg-background/70 backdrop-blur">
-      <div className="mx-auto flex max-w-[1600px] items-center gap-1 overflow-x-auto px-4 py-2 sm:px-6">
+    <div className="border-b border-border/80 bg-surface/20 backdrop-blur">
+      <div className="mx-auto flex max-w-[1600px] items-center gap-0 overflow-x-auto px-4 sm:px-6 lg:px-8">
         {CATEGORIES.map((c) => (
           <button
             key={c.key}
             type="button"
             onClick={() => onChange(c.key)}
             className={cn(
-              "relative shrink-0 rounded-lg px-3 py-1.5 text-[0.8125rem] font-semibold uppercase tracking-[0.06em] transition-colors",
+              "relative shrink-0 border-b-2 border-transparent px-3 py-3 text-[0.6875rem] font-semibold uppercase tracking-[0.13em] transition-colors",
               value === c.key
-                ? "bg-primary/12 text-primary"
-                : "text-muted-foreground hover:bg-surface hover:text-foreground",
+                ? "border-primary text-primary"
+                : "text-muted-foreground hover:border-border-strong hover:text-foreground",
             )}
           >
             {c.label}

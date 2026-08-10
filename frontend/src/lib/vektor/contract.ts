@@ -1,324 +1,362 @@
-/**
- * Vektor contract adapter.
- *
- * This is the single boundary between the UI and the GenLayer contract.
- * Today it is backed by deterministic preview data; a real GenLayer client
- * can be supplied through `setVektorContract()` without changing the UI.
- *
- * Preview writes return descriptive non-broadcasting `TxIntent` values.
- */
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { createClient } from "genlayer-js";
+import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
+import { formatUnits, parseUnits } from "viem";
+import type { Address } from "viem";
+import type { Connector } from "wagmi";
+import {
+  CONTRACT_EXPLORER,
+  GENLAYER_CHAIN,
+  GENLAYER_RPC_ENDPOINT,
+  MARKET_PAGE_SIZE,
+  requireContractAddress,
+} from "./config";
 import type {
+  Evidence,
   Instrument,
+  InstrumentMeta,
   Market,
   MarketQuery,
-  Outcome,
-  PositionStatus,
+  Page,
+  Position,
   ProtocolConfig,
   Side,
   UserBet,
+  UserMarketStatus,
   ValidationResult,
+  WriteResult,
+  WriteOptions,
 } from "./types";
-import {
-  ACTIVITY,
-  DEMO_WALLET,
-  INSTRUMENTS,
-  MARKETS,
-  PROTOCOL_CONFIG,
-  USER_BETS,
-  buildQuestion,
-  isWeekend,
-  previousWeekday,
-} from "./mock-data";
-import type { ActivityEvent, InstrumentMeta } from "./types";
 
-/** Describes an unsigned contract write. The preview adapter never broadcasts. */
-export interface TxIntent {
-  method: string;
-  args: Record<string, unknown>;
-  value?: string;
-  /** True once a real GenLayer client is connected. */
-  broadcastable: boolean;
+type AnyClient = {
+  readContract(args: Record<string, unknown>): Promise<unknown>;
+  writeContract(args: Record<string, unknown>): Promise<unknown>;
+  waitForTransactionReceipt(args: Record<string, unknown>): Promise<any>;
+};
+type RawMarket = any;
+
+const client = () =>
+  createClient({
+    chain: GENLAYER_CHAIN as any,
+    endpoint: GENLAYER_RPC_ENDPOINT,
+  }) as unknown as AnyClient;
+const raw = (value: unknown): any => (typeof value === "string" ? JSON.parse(value) : value);
+const text = (value: unknown) => String(value ?? "");
+const gen = (value: unknown) => Number(formatUnits(BigInt(text(value)), 18));
+const timestamp = (value: unknown) => {
+  const s = text(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T00:00:00.000Z`;
+  try {
+    const seconds = Number(BigInt(s || "0"));
+    return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : "";
+  } catch {
+    return "";
+  }
+};
+const price = (value: unknown) => {
+  const n = Number(BigInt(text(value))) / 1_000_000;
+  return Number.isFinite(n) ? n : null;
+};
+
+async function read(functionName: string, args: unknown[] = []) {
+  return client().readContract({
+    address: requireContractAddress(),
+    functionName,
+    args,
+    // GenLayerJS 1.1.x exposes the accepted/non-final state through this
+    // transaction-hash variant rather than a stateStatus option.
+    transactionHashVariant: "latest-nonfinal",
+  });
+}
+
+function evidenceOf(value: unknown): Evidence | null {
+  if (!value) return null;
+  const e = value as Record<string, any>;
+  return typeof e === "object" && "ar" in e ? (e as Evidence) : null;
+}
+
+function mapMarket(value: unknown, summary = false): Market {
+  const m = value as RawMarket;
+  const evidence = evidenceOf(m.evidence ? raw(m.evidence) : null);
+  return {
+    id: text(m.id),
+    instrument: m.instrument as Instrument,
+    question: text(m.question),
+    category: m.category === "METAL" ? "METAL" : "FX",
+    referenceDate: text(m.reference_date),
+    targetDate: text(m.target_date),
+    targetEnd: timestamp(m.target_end),
+    settlementEligibleAt: timestamp(m.settlement_eligible ?? m.target_end),
+    createdAt: timestamp(m.created),
+    status: m.status,
+    displayStatus: m.display_status,
+    settlementReady: Boolean(m.settlement_ready),
+    upPool: gen(m.up_total ?? m.up),
+    downPool: gen(m.down_total ?? m.down),
+    upBps: Number(m.up_bps ?? 0),
+    downBps: Number(m.down_bps ?? 0),
+    outcome: m.outcome,
+    referencePrice: evidence ? price(evidence.ar) : null,
+    targetPrice: evidence ? price(evidence.at) : null,
+    series: [],
+    evidence,
+    creator: "Anyone",
+    bettors: summary ? null : null,
+    marketType: m.market_type,
+  };
+}
+
+function mapPage(value: unknown): Page<Market> {
+  const p = raw(value) as any;
+  return {
+    items: (p.markets ?? []).map((m: unknown) => mapMarket(m, true)),
+    offset: Number(p.offset),
+    limit: Number(p.limit),
+    total: Number(p.total),
+    hasMore: Number(p.offset) + (p.markets ?? []).length < Number(p.total),
+  };
 }
 
 export interface VektorContract {
-  /* ------------------------------------------------------------- writes */
-  create_market(instrument: Instrument, target_date: string): Promise<TxIntent>;
-  place_bet(market_id: string, side: Side, value: string): Promise<TxIntent>;
-  settle_market(market_id: string): Promise<TxIntent>;
-  claim_payout(market_id: string): Promise<TxIntent>;
-
-  /* -------------------------------------------------------------- views */
+  create_market(
+    instrument: Instrument,
+    target_date: string,
+    options?: WriteOptions,
+  ): Promise<WriteResult>;
+  place_bet(
+    market_id: string,
+    side: Side,
+    value: string,
+    options?: WriteOptions,
+  ): Promise<WriteResult>;
+  settle_market(market_id: string, options?: WriteOptions): Promise<WriteResult>;
+  claim_payout(market_id: string, options?: WriteOptions): Promise<WriteResult>;
   get_protocol_config(): Promise<ProtocolConfig>;
   get_supported_markets(): Promise<InstrumentMeta[]>;
-  get_market(market_id: string): Promise<Market | null>;
+  get_market(market_id: string): Promise<Market>;
   get_market_count(): Promise<number>;
   get_market_ids(): Promise<string[]>;
-  get_markets(query?: MarketQuery): Promise<Market[]>;
-  get_user_bet(market_id: string, address: string): Promise<UserBet | null>;
-  get_user_market_ids(address: string): Promise<string[]>;
-  get_due_market_ids(): Promise<string[]>;
+  get_markets(query?: MarketQuery): Promise<Page<Market>>;
+  get_user_bet(market_id: string, address: string): Promise<UserBet>;
+  get_user_market_ids(address: string, offset?: number, limit?: number): Promise<Page<string>>;
+  get_due_market_ids(offset?: number, limit?: number): Promise<Page<string>>;
   get_remaining_bet_capacity(market_id: string, address: string): Promise<number>;
   get_claimable_payout(market_id: string, address: string): Promise<number>;
-  get_user_market_status(market_id: string, address: string): Promise<PositionStatus | null>;
-  can_place_bet(
-    market_id: string,
-    address: string,
-    side: Side,
-    amount: number,
-  ): Promise<{ allowed: boolean; reason: string | null }>;
-  can_claim_payout(
-    market_id: string,
-    address: string,
-  ): Promise<{ allowed: boolean; reason: string | null }>;
+  get_user_market_status(market_id: string, address: string): Promise<UserMarketStatus>;
+  can_place_bet(market_id: string, address: string, side: Side, amount: string): Promise<boolean>;
+  can_claim_payout(market_id: string, address: string): Promise<boolean>;
   validate_market_creation(instrument: Instrument, target_date: string): Promise<ValidationResult>;
-
-  /* --------------------------------------- off-chain indexer conveniences */
-  get_activity(): Promise<ActivityEvent[]>;
 }
 
-const latency = (ms = 220) => new Promise((r) => setTimeout(r, ms));
-
-function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v)) as T;
-}
-
-function statusFor(market: Market, bet: UserBet): PositionStatus {
-  if (market.status !== "CLOSED") return "ACTIVE";
-  if (market.outcome === "INCONCLUSIVE") {
-    return bet.claimed ? "CLAIMED" : "REFUND_AVAILABLE";
-  }
-  if (market.outcome === bet.side) return bet.claimed ? "CLAIMED" : "WON";
-  return "LOST";
-}
-
-function payoutFor(market: Market, bet: UserBet): number {
-  if (market.status !== "CLOSED") return 0;
-  if (market.outcome === "INCONCLUSIVE") return bet.claimed ? 0 : bet.stake;
-  if (market.outcome !== bet.side) return 0;
-  if (bet.claimed) return 0;
-  const winningPool = market.outcome === "UP" ? market.upPool : market.downPool;
-  const total = market.upPool + market.downPool;
-  return (bet.stake / winningPool) * total;
-}
-
-export class MockVektorContract implements VektorContract {
-  /* ------------------------------------------------------------- writes */
-
-  async create_market(instrument: Instrument, target_date: string): Promise<TxIntent> {
-    await latency();
-    return {
-      method: "create_market",
-      args: { instrument, target_date },
-      broadcastable: false,
-    };
-  }
-
-  async place_bet(market_id: string, side: Side, value: string): Promise<TxIntent> {
-    await latency();
-    return {
-      method: "place_bet",
-      args: { market_id, side },
-      value,
-      broadcastable: false,
-    };
-  }
-
-  async settle_market(market_id: string): Promise<TxIntent> {
-    await latency();
-    return { method: "settle_market", args: { market_id }, broadcastable: false };
-  }
-
-  async claim_payout(market_id: string): Promise<TxIntent> {
-    await latency();
-    return { method: "claim_payout", args: { market_id }, broadcastable: false };
-  }
-
-  /* -------------------------------------------------------------- views */
-
+export const vektorContract: VektorContract = {
   async get_protocol_config() {
-    await latency(80);
-    return clone(PROTOCOL_CONFIG);
-  }
-
+    const p = raw(await read("get_protocol_config")) as any;
+    return {
+      ...p,
+      chain: GENLAYER_CHAIN.name,
+      contractAddress: requireContractAddress(),
+      minStake: gen(p.min_stake),
+      maxStakePerWallet: gen(p.max_stake),
+      protocolFeeBps: 0,
+      oracles: p.settlement_sources,
+    };
+  },
   async get_supported_markets() {
-    await latency(80);
-    return clone(INSTRUMENTS);
-  }
-
-  async get_market(market_id: string) {
-    await latency();
-    return clone(MARKETS.find((m) => m.id === market_id) ?? null);
-  }
-
+    return raw(await read("get_supported_markets")) as InstrumentMeta[];
+  },
+  async get_market(market_id) {
+    return mapMarket(raw(await read("get_market", [BigInt(market_id)])));
+  },
   async get_market_count() {
-    await latency(60);
-    return MARKETS.length;
-  }
-
+    return Number(await read("get_market_count"));
+  },
   async get_market_ids() {
-    await latency(60);
-    return MARKETS.map((m) => m.id);
-  }
-
-  async get_markets(query: MarketQuery = {}) {
-    await latency(260);
-    const { category = "all", instruments, search, sort = "volume" } = query;
-    let out = clone(MARKETS);
-
-    if (category === "fx" || category === "metals") {
-      const symbols = INSTRUMENTS.filter((i) => i.klass === category).map((i) => i.symbol);
-      out = out.filter((m) => symbols.includes(m.instrument));
-    } else if (category === "live") {
-      out = out.filter((m) => m.status === "OPEN");
-    } else if (category === "settling") {
-      out = out.filter((m) => m.status === "OPEN");
-    } else if (category === "resolved") {
-      out = out.filter((m) => m.status === "CLOSED");
-    }
-
-    if (instruments?.length) {
-      out = out.filter((m) => instruments.includes(m.instrument));
-    }
-
-    if (search?.trim()) {
-      const q = search.trim().toLowerCase();
-      out = out.filter(
-        (m) =>
-          m.instrument.toLowerCase().includes(q) ||
-          m.question.toLowerCase().includes(q) ||
-          m.id.toLowerCase().includes(q),
+    return raw(await read("get_market_ids")) as string[];
+  },
+  async get_markets(query = {}) {
+    const page = mapPage(await read("get_markets", [0n, BigInt(MARKET_PAGE_SIZE)]));
+    let items = page.items;
+    if (query.category === "fx") items = items.filter((m) => m.category === "FX");
+    if (query.category === "metals") items = items.filter((m) => m.category === "METAL");
+    if (query.category === "live") items = items.filter((m) => m.status === "OPEN");
+    if (query.category === "settling")
+      items = items.filter((m) => m.displayStatus === "READY_FOR_SETTLEMENT");
+    if (query.category === "resolved") items = items.filter((m) => m.status === "CLOSED");
+    if (query.instruments?.length)
+      items = items.filter((m) => query.instruments?.includes(m.instrument));
+    if (query.search?.trim()) {
+      const q = query.search.trim().toLowerCase();
+      items = items.filter((m) =>
+        `${m.id} ${m.instrument} ${m.question}`.toLowerCase().includes(q),
       );
     }
-
-    const total = (m: Market) => m.upPool + m.downPool;
-    out.sort((a, b) => {
-      if (sort === "newest") return b.createdAt.localeCompare(a.createdAt);
-      if (sort === "closing") return a.targetEnd.localeCompare(b.targetEnd);
-      if (sort === "activity") return b.bettors - a.bettors;
-      return total(b) - total(a);
-    });
-
-    return out;
-  }
-
-  async get_user_bet(market_id: string, address: string) {
-    await latency(120);
-    if (address !== DEMO_WALLET) return null;
-    return clone(USER_BETS.find((b) => b.marketId === market_id) ?? null);
-  }
-
-  async get_user_market_ids(address: string) {
-    await latency(120);
-    if (address !== DEMO_WALLET) return [];
-    return USER_BETS.map((b) => b.marketId);
-  }
-
-  async get_due_market_ids() {
-    await latency(120);
-    return MARKETS.filter((m) => m.status === "OPEN" && m.targetDate <= "2026-08-10").map(
-      (m) => m.id,
+    items.sort((a, b) =>
+      query.sort === "newest"
+        ? Number(b.id) - Number(a.id)
+        : query.sort === "closing"
+          ? a.targetEnd.localeCompare(b.targetEnd)
+          : b.upPool + b.downPool - a.upPool - a.downPool,
     );
-  }
-
-  async get_remaining_bet_capacity(market_id: string, address: string) {
-    await latency(100);
-    const bet = address === DEMO_WALLET ? USER_BETS.find((b) => b.marketId === market_id) : null;
-    return Math.max(0, PROTOCOL_CONFIG.maxStakePerWallet - (bet?.stake ?? 0));
-  }
-
-  async get_claimable_payout(market_id: string, address: string) {
-    await latency(100);
-    const market = MARKETS.find((m) => m.id === market_id);
-    const bet = address === DEMO_WALLET ? USER_BETS.find((b) => b.marketId === market_id) : null;
-    if (!market || !bet) return 0;
-    return payoutFor(market, bet);
-  }
-
-  async get_user_market_status(market_id: string, address: string) {
-    await latency(100);
-    const market = MARKETS.find((m) => m.id === market_id);
-    const bet = address === DEMO_WALLET ? USER_BETS.find((b) => b.marketId === market_id) : null;
-    if (!market || !bet) return null;
-    return statusFor(market, bet);
-  }
-
-  async can_place_bet(market_id: string, address: string, side: Side, amount: number) {
-    await latency(90);
-    const market = MARKETS.find((m) => m.id === market_id);
-    if (!market) return { allowed: false, reason: "Market not found." };
-    if (market.status === "CLOSED") {
-      return { allowed: false, reason: "Market is closed to new positions." };
-    }
-    if (amount < PROTOCOL_CONFIG.minStake) {
-      return { allowed: false, reason: `Minimum stake is ${PROTOCOL_CONFIG.minStake} GEN.` };
-    }
-    const existing =
-      address === DEMO_WALLET ? USER_BETS.find((b) => b.marketId === market_id) : null;
-    if (existing && existing.side !== side) {
-      return {
-        allowed: false,
-        reason: `This wallet already holds ${existing.side}. Opposite-side positions are rejected.`,
-      };
-    }
-    const remaining = PROTOCOL_CONFIG.maxStakePerWallet - (existing?.stake ?? 0);
-    if (amount > remaining) {
-      return { allowed: false, reason: `Remaining capacity is ${remaining} GEN for this wallet.` };
-    }
-    return { allowed: true, reason: null };
-  }
-
-  async can_claim_payout(market_id: string, address: string) {
-    await latency(90);
-    const status = await this.get_user_market_status(market_id, address);
-    if (!status) return { allowed: false, reason: "No position in this market." };
-    if (status === "ACTIVE") return { allowed: false, reason: "Market has not settled." };
-    if (status === "LOST") return { allowed: false, reason: "Position did not win." };
-    if (status === "CLAIMED") return { allowed: false, reason: "Already claimed." };
-    return { allowed: true, reason: null };
-  }
-
-  async validate_market_creation(instrument: Instrument, target_date: string) {
-    await latency(140);
-    const errors: string[] = [];
-
-    if (!INSTRUMENTS.some((i) => i.symbol === instrument)) {
-      errors.push("Instrument is not in the supported set.");
-    }
-    if (!target_date) {
-      errors.push("Select a target date.");
-    } else {
-      if (isWeekend(target_date)) errors.push("Target date must be a weekday session.");
-      if (target_date < "2026-08-11") errors.push("Target date must be today or later.");
-      if (MARKETS.some((m) => m.instrument === instrument && m.targetDate === target_date)) {
-        errors.push("A market for this instrument and date already exists.");
-      }
-    }
-
-    const valid = errors.length === 0;
+    return { ...page, items };
+  },
+  async get_user_bet(market_id, address) {
+    const p = raw(await read("get_user_bet", [BigInt(market_id), address])) as any;
+    return { side: p.side, stake: gen(p.stake), claimed: Boolean(p.claimed) };
+  },
+  async get_user_market_ids(address, offset = 0, limit = MARKET_PAGE_SIZE) {
+    const p = raw(
+      await read("get_user_market_ids", [address, BigInt(offset), BigInt(limit)]),
+    ) as any;
     return {
-      valid,
-      errors,
-      referenceDate: target_date && !isWeekend(target_date) ? previousWeekday(target_date) : null,
-      question: valid ? buildQuestion(instrument, target_date) : null,
-    } satisfies ValidationResult;
+      items: p.market_ids as string[],
+      offset: Number(p.offset),
+      limit: Number(p.limit),
+      total: Number(p.total),
+      hasMore: Boolean(p.has_more),
+    };
+  },
+  async get_due_market_ids(offset = 0, limit = MARKET_PAGE_SIZE) {
+    const p = raw(await read("get_due_market_ids", [BigInt(offset), BigInt(limit)])) as any;
+    return {
+      items: p.market_ids as string[],
+      offset: Number(p.offset),
+      limit: Number(p.limit),
+      total: Number(p.next_offset) + (p.has_more ? 1 : 0),
+      hasMore: Boolean(p.has_more),
+      nextOffset: Number(p.next_offset),
+      scanned: Number(p.scanned),
+    };
+  },
+  async get_remaining_bet_capacity(market_id, address) {
+    return gen(await read("get_remaining_bet_capacity", [BigInt(market_id), address]));
+  },
+  async get_claimable_payout(market_id, address) {
+    return gen(await read("get_claimable_payout", [BigInt(market_id), address]));
+  },
+  async get_user_market_status(market_id, address) {
+    const p = raw(await read("get_user_market_status", [BigInt(market_id), address])) as any;
+    return {
+      ...p,
+      stake: gen(p.stake),
+      claimable_amount: gen(p.claimable_amount),
+      remaining_bet_capacity: gen(p.remaining_bet_capacity),
+    } as UserMarketStatus;
+  },
+  async can_place_bet(market_id, address, side, amount) {
+    return Boolean(
+      await read("can_place_bet", [BigInt(market_id), address, side, parseUnits(amount, 18)]),
+    );
+  },
+  async can_claim_payout(market_id, address) {
+    return Boolean(await read("can_claim_payout", [BigInt(market_id), address]));
+  },
+  async validate_market_creation(instrument, target_date) {
+    return raw(
+      await read("validate_market_creation", [instrument, target_date]),
+    ) as ValidationResult;
+  },
+  async create_market(instrument, target_date, options?: WriteOptions) {
+    return submit("create_market", [instrument, target_date], 0n, options);
+  },
+  async place_bet(market_id, side, value, options?: WriteOptions) {
+    return submit("place_bet", [BigInt(market_id), side], parseUnits(value, 18), options);
+  },
+  async settle_market(market_id, options?: WriteOptions) {
+    return submit("settle_market", [BigInt(market_id)], 0n, options);
+  },
+  async claim_payout(market_id, options?: WriteOptions) {
+    return submit("claim_payout", [BigInt(market_id)], 0n, options);
+  },
+};
+
+let activeWallet: { connector: Connector; account: Address } | null = null;
+export function setActiveWallet(wallet: { connector: Connector; account: Address } | null) {
+  activeWallet = wallet;
+}
+
+async function submit(
+  functionName: string,
+  args: unknown[],
+  value = 0n,
+  options?: WriteOptions,
+): Promise<WriteResult> {
+  if (!activeWallet) throw new Error("Connect an injected wallet before submitting.");
+  const provider = await activeWallet.connector.getProvider();
+  const request = (
+    provider as { request?: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
+  ).request;
+  if (!request) throw new Error("Your wallet could not be used. Try reconnecting it.");
+  const accounts = await request({ method: "eth_accounts" });
+  if (
+    !Array.isArray(accounts) ||
+    String(accounts[0]).toLowerCase() !== activeWallet.account.toLowerCase()
+  )
+    throw new Error("Connected wallet account changed. Reconnect and try again.");
+  const chainId = await request({ method: "eth_chainId" });
+  if (String(chainId).toLowerCase() !== `0x${GENLAYER_CHAIN.id.toString(16)}`)
+    throw new Error(`Switch your wallet to ${GENLAYER_CHAIN.name}.`);
+  const writeClient = createClient({
+    chain: GENLAYER_CHAIN as any,
+    endpoint: GENLAYER_RPC_ENDPOINT,
+    account: activeWallet.account,
+    provider,
+  }) as unknown as AnyClient;
+  const result = await writeClient.writeContract({
+    address: requireContractAddress(),
+    functionName,
+    args,
+    value,
+  });
+  const hash = String(result);
+  options?.onProgress?.({ phase: "submitted", hash });
+  options?.onProgress?.({ phase: "processing", hash });
+  const receiptPromise = writeClient.waitForTransactionReceipt({
+    hash,
+    status: TransactionStatus.ACCEPTED,
+    interval: 2_000,
+    retries: 60,
+  });
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), 150_000);
+  });
+  const receipt = await Promise.race([receiptPromise, timeoutPromise]);
+  if (timeoutId !== undefined) clearTimeout(timeoutId);
+  if (receipt === null) {
+    options?.onProgress?.({ phase: "uncertain", hash });
+    return { hash, confirmed: false };
   }
-
-  async get_activity() {
-    await latency(200);
-    return clone(ACTIVITY).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  if (receipt?.txExecutionResultName === ExecutionResult.FINISHED_WITH_ERROR)
+    throw new Error("This action could not be completed.");
+  if (receipt?.txExecutionResultName !== ExecutionResult.FINISHED_WITH_RETURN) {
+    options?.onProgress?.({ phase: "uncertain", hash });
+    return { hash, confirmed: false };
   }
+  options?.onProgress?.({ phase: "completed", hash });
+  return {
+    hash,
+    confirmed: true,
+  };
 }
 
-let instance: VektorContract = new MockVektorContract();
-
-export function getVektorContract(): VektorContract {
-  return instance;
+export function transactionExplorer(hash: string) {
+  return `${CONTRACT_EXPLORER}/tx/${hash}`;
 }
-
-/** Replace the adapter once a real GenLayer client is available. */
-export function setVektorContract(next: VektorContract) {
-  instance = next;
+export function formatNative(value: string) {
+  return formatUnits(BigInt(value), 18);
 }
-
-export type { Outcome };
+export function nativeValue(value: string) {
+  return parseUnits(value, 18);
+}
+export async function loadPosition(address: string, marketId: string): Promise<Position> {
+  const [market, status] = await Promise.all([
+    vektorContract.get_market(marketId),
+    vektorContract.get_user_market_status(marketId, address),
+  ]);
+  return {
+    market,
+    bet: { side: status.side, stake: status.stake, claimed: status.claimed },
+    status: status.user_result,
+    claimable: status.claimable_amount,
+  };
+}

@@ -1,6 +1,7 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+@import "@rainbow-me/rainbowkit/styles.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -210,4 +211,18 @@
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--primary) 30%, transparent),
     0 8px 30px -12px color-mix(in oklab, var(--primary) 45%, transparent);
+}
+
+.app-shell {
+  background-image: radial-gradient(
+    circle at 50% -20%,
+    color-mix(in oklab, var(--primary) 5%, transparent),
+    transparent 38rem
+  );
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    background-image: none;
+  }
 }

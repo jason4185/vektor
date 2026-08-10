@@ -1,109 +1,291 @@
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Coins, HandCoins, Plus, ShieldCheck } from "lucide-react";
-import { LoadingBlock, ErrorState, EmptyState } from "@/components/vektor/states";
-import { OutcomeChip, SideChip } from "@/components/vektor/status-chip";
-import { activityQuery } from "@/lib/vektor/queries";
-import { formatGen, relativeTime } from "@/lib/vektor/format";
-import type { ActivityKind } from "@/lib/vektor/types";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  CircleDollarSign,
+  Clock3,
+  Radio,
+  Trophy,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState, ErrorState, LoadingBlock } from "@/components/vektor/states";
+import { useWallet } from "@/lib/vektor/wallet";
+import { dueMarketsQuery, portfolioQuery } from "@/lib/vektor/queries";
+import { vektorContract } from "@/lib/vektor/contract";
+import { formatWalletError } from "@/lib/vektor/errors";
+import { formatDate, formatGen } from "@/lib/vektor/format";
+import {
+  activityMatches,
+  activityPriority,
+  deriveActivityItem,
+  type ActivityFilter,
+  type ActivityItem,
+} from "@/lib/vektor/activity";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/activity")({
   head: () => ({
     meta: [
       { title: "Activity — Vektor" },
-      {
-        name: "description",
-        content:
-          "Live feed of Vektor contract activity: market listings, GEN bets, permissionless settlements and payout claims.",
-      },
-      { property: "og:title", content: "Activity — Vektor" },
-      {
-        property: "og:description",
-        content: "Every listing, bet, settlement and claim on the Vektor contract.",
-      },
+      { name: "description", content: "Your Vektor markets and actions from contract state." },
     ],
   }),
-  component: ActivityFeed,
+  component: ActivityPage,
 });
 
-const ICONS: Record<ActivityKind, typeof Coins> = {
-  CREATE: Plus,
-  BET: Coins,
-  SETTLE: ShieldCheck,
-  CLAIM: HandCoins,
-};
+const filters: Array<{ key: ActivityFilter; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "needs", label: "Needs action" },
+  { key: "live", label: "Live" },
+  { key: "open", label: "Open" },
+  { key: "finished", label: "Finished" },
+];
 
-const LABELS: Record<ActivityKind, string> = {
-  CREATE: "Market listed",
-  BET: "Position placed",
-  SETTLE: "Market settled",
-  CLAIM: "Payout claimed",
-};
+function ActivityPage() {
+  const { address, connect, status: walletStatus } = useWallet();
+  const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<ActivityFilter>("all");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const portfolio = useQuery(portfolioQuery(address));
+  const due = useQuery(dueMarketsQuery());
+  const items = useMemo(
+    () =>
+      (portfolio.data ?? [])
+        .map(deriveActivityItem)
+        .filter((item): item is ActivityItem => item !== null)
+        .sort(
+          (a, b) =>
+            activityPriority(a) - activityPriority(b) || b.targetDate.localeCompare(a.targetDate),
+        ),
+    [portfolio.data],
+  );
+  const filtered = items.filter((item) => activityMatches(item, filter));
 
-function ActivityFeed() {
-  const { data, isPending, isError, refetch } = useQuery(activityQuery());
+  async function refresh(marketId: string) {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["vektor", "portfolio", address] }),
+      queryClient.invalidateQueries({ queryKey: ["vektor", "market", marketId] }),
+      queryClient.invalidateQueries({ queryKey: ["vektor", "user-status", marketId, address] }),
+      queryClient.invalidateQueries({ queryKey: ["vektor", "due-market-state"] }),
+      queryClient.invalidateQueries({ queryKey: ["vektor", "due-markets"] }),
+    ]);
+  }
+
+  async function run(item: ActivityItem) {
+    if (!address || !item.action || item.action === "view") return;
+    const busyKey = item.action === "settle" ? `settle-${item.marketId}` : item.marketId;
+    setBusyId(busyKey);
+    setError(null);
+    try {
+      if (item.action === "settle") await vektorContract.settle_market(item.marketId);
+      else await vektorContract.claim_payout(item.marketId);
+      await refresh(item.marketId);
+    } catch (reason) {
+      setError(formatWalletError(reason));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (!address) {
+    return (
+      <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6 lg:px-8">
+        <PageIntro />
+        <EmptyState
+          className="mt-6"
+          title="Connect your wallet to see your Vektor activity"
+          description="Your markets and positions are read directly from Vektor."
+          action={
+            <Button onClick={() => void connect()} disabled={walletStatus === "connecting"}>
+              {walletStatus === "connecting" ? "Connecting…" : "Connect wallet"}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <h1 className="text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">
-        Activity
-      </h1>
-      <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-        Preview activity from the Vektor adapter, newest first. Chain writes remain disabled until a
-        GenLayer client is configured.
-      </p>
-
-      <div className="mt-6">
-        {isPending && <LoadingBlock label="Indexing contract events" />}
-        {isError && <ErrorState onRetry={() => void refetch()} />}
-        {data && data.length === 0 && (
-          <EmptyState title="No events yet" description="Contract activity will stream in here." />
-        )}
-
-        {data && data.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-border divide-y divide-border">
-            {data.map((e) => {
-              const Icon = ICONS[e.kind];
-              return (
-                <div key={e.id} className="flex items-center gap-4 px-4 py-3.5 hover:bg-surface">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border bg-surface-raised">
-                    <Icon className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-foreground">
-                        {LABELS[e.kind]}
-                      </span>
-                      <Link
-                        to="/market/$id"
-                        params={{ id: e.marketId }}
-                        className="num text-xs text-muted-foreground hover:text-primary"
-                      >
-                        {e.instrument} · {e.marketId}
-                      </Link>
-                      {e.side && <SideChip side={e.side} />}
-                      {e.outcome && <OutcomeChip outcome={e.outcome} />}
-                    </div>
-                    <div className="num mt-1 truncate text-xs text-muted-foreground">
-                      {e.actor} · {e.txHash}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    {e.amount !== null && (
-                      <div className="num text-sm font-semibold text-foreground">
-                        {formatGen(e.amount)} GEN
-                      </div>
-                    )}
-                    <div className="num text-xs text-muted-foreground">
-                      {relativeTime(e.timestamp)}
-                    </div>
+    <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6 lg:px-8">
+      <PageIntro />
+      <div className="mt-6 flex flex-wrap gap-1 border-b border-border pb-2">
+        {filters.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setFilter(item.key)}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-xs font-semibold",
+              filter === item.key
+                ? "bg-primary/12 text-primary"
+                : "text-muted-foreground hover:bg-surface hover:text-foreground",
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {error && <p className="mt-3 text-sm text-down">{error}</p>}
+      {portfolio.isPending && <LoadingBlock label="Loading your activity" />}
+      {portfolio.isError && <ErrorState onRetry={() => void portfolio.refetch()} />}
+      {!portfolio.isPending && !portfolio.isError && filtered.length === 0 && (
+        <EmptyState
+          className="mt-6"
+          title="No activity yet"
+          description="Your Vektor positions and market actions will appear here after you participate in a market."
+          action={
+            <Button asChild variant="surface">
+              <Link to="/">Browse markets</Link>
+            </Button>
+          }
+        />
+      )}
+      {!portfolio.isPending && !portfolio.isError && filtered.length > 0 && (
+        <div className="mt-4 divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface/30">
+          {filtered.map((item) => (
+            <ActivityRow
+              key={item.marketId}
+              item={item}
+              busy={busyId === item.marketId || busyId === `settle-${item.marketId}`}
+              onAction={() => void run(item)}
+            />
+          ))}
+        </div>
+      )}
+      {due.data && due.data.length > 0 && (
+        <section className="mt-8">
+          <div className="label-xs text-primary">Markets ready to settle</div>
+          <div className="mt-3 divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface/30">
+            {due.data.map((market) => (
+              <div key={market.id} className="flex items-center gap-3 px-4 py-3">
+                <Clock3 className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-foreground">{market.instrument}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Target {formatDate(market.targetDate)}
                   </div>
                 </div>
-              );
-            })}
+                <Button
+                  size="sm"
+                  disabled={busyId === `settle-${market.id}`}
+                  onClick={() =>
+                    void run({
+                      marketId: market.id,
+                      kind: "ready",
+                      group: "needs",
+                      title: "Ready to settle",
+                      instrument: market.instrument,
+                      side: "UP",
+                      stake: 0,
+                      claimable: 0,
+                      targetDate: market.targetDate,
+                      action: "settle",
+                    })
+                  }
+                >
+                  {busyId === `settle-${market.id}` ? "Settling…" : "Settle"}
+                </Button>
+              </div>
+            ))}
           </div>
+        </section>
+      )}
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        Activity is reconstructed from current Vektor market state on GenLayer.
+      </p>
+    </div>
+  );
+}
+
+function PageIntro() {
+  return (
+    <>
+      <div className="label-xs text-primary">Contract activity</div>
+      <h1 className="mt-2 text-2xl font-bold tracking-[-0.04em] text-foreground sm:text-3xl">
+        Activity
+      </h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Your Vektor markets and actions, read directly from the contract.
+      </p>
+    </>
+  );
+}
+
+function ActivityRow({
+  item,
+  busy,
+  onAction,
+}: {
+  item: ActivityItem;
+  busy: boolean;
+  onAction: () => void;
+}) {
+  const Icon =
+    item.kind === "payout" || item.kind === "refund"
+      ? CircleDollarSign
+      : item.kind === "live"
+        ? Radio
+        : item.kind === "lost"
+          ? item.side === "UP"
+            ? ArrowUpRight
+            : ArrowDownRight
+          : item.kind === "won" || item.kind === "claimed"
+            ? Trophy
+            : item.side === "UP"
+              ? ArrowUpRight
+              : ArrowDownRight;
+  const actionLabel =
+    item.action === "claim"
+      ? item.kind === "refund"
+        ? "Claim refund"
+        : "Claim payout"
+      : item.action === "settle"
+        ? "Settle market"
+        : "View market";
+  return (
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3.5 hover:bg-surface">
+      <Icon
+        className={cn(
+          "h-4 w-4 shrink-0",
+          item.kind === "lost"
+            ? "text-down"
+            : item.kind === "payout" || item.kind === "refund"
+              ? "text-up"
+              : "text-primary",
         )}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-foreground">{item.title}</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          {item.instrument} · {item.side} · {formatGen(item.stake)} GEN · Target{" "}
+          {formatDate(item.targetDate)}
+        </div>
       </div>
+      {item.claimable > 0 && (
+        <div className="num text-xs font-semibold text-up">
+          {formatGen(item.claimable)} GEN available
+        </div>
+      )}
+      <Button
+        asChild={item.action === "view"}
+        size="sm"
+        variant={item.action === "view" ? "surface" : "default"}
+        disabled={busy}
+        onClick={item.action === "view" ? undefined : onAction}
+      >
+        {item.action === "view" ? (
+          <Link to="/market/$id" params={{ id: item.marketId }}>
+            {actionLabel} →
+          </Link>
+        ) : busy ? (
+          "Processing…"
+        ) : (
+          actionLabel
+        )}
+      </Button>
     </div>
   );
 }

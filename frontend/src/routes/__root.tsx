@@ -52,7 +52,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           This view didn't load
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          A contract read failed. Retry, or head back to the market list.
+          This page could not load. Try again, or return to the markets.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -81,11 +81,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Vektor — Daily FX & Metals Prediction Markets" },
+      { title: "Vektor — Daily FX and Metals Markets" },
       {
         name: "description",
-        content:
-          "Vektor is a permissionless daily directional prediction market on GenLayer for GBP/USD, USD/JPY, XAU/USD and XAG/USD.",
+        content: "Vektor is a daily prediction market for GBP/USD, USD/JPY, gold, and silver.",
       },
       { name: "author", content: "Vektor" },
       { property: "og:type", content: "website" },
@@ -124,16 +123,15 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function SiteFooter() {
   return (
-    <footer className="mt-16 border-t border-border">
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-center md:justify-between">
+    <footer className="mt-auto border-t border-border/80 bg-surface/35">
+      <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         <div className="min-w-0">
           <VektorWordmark />
-          <p className="mt-3 max-w-md text-xs leading-relaxed text-muted-foreground">
-            Vektor lists permissionless daily directional markets on GenLayer. Outcomes are resolved
-            by validator consensus over independent price sources, never by an operator.
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Daily FX and metals prediction markets powered by GenLayer.
           </p>
         </div>
-        <nav className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
+        <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
           <Link to="/" className="hover:text-foreground">
             Markets
           </Link>
@@ -149,6 +147,9 @@ function SiteFooter() {
           <Link to="/how-it-works" className="hover:text-foreground">
             How it works
           </Link>
+          <span className="ml-1 inline-flex items-center gap-1.5 border-l border-border pl-4 text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground/70">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" /> Bradbury
+          </span>
         </nav>
       </div>
     </footer>
@@ -161,7 +162,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <WalletProvider>
-        <div className="flex min-h-screen flex-col bg-background">
+        <div className="app-shell flex min-h-screen flex-col bg-background">
           <SiteHeader />
           <main className="flex-1">
             {/* Required: nested routes render here. */}

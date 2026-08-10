@@ -1,6 +1,6 @@
 # Vektor
 
-Permissionless daily FX and metals prediction markets powered by GenLayer.
+Daily FX and metals prediction markets powered by GenLayer.
 
 ## What Vektor is
 
@@ -27,7 +27,7 @@ sources must agree on UP or DOWN. Disagreement, ties, invalid evidence, or
 unavailable evidence produce the documented inconclusive/retry behavior;
 transient source failures do not falsely finalize a market.
 
-## Permissionlessness and economics
+## Participation and economics
 
 - Anyone can create a bounded supported market.
 - Anyone can settle an eligible market.
@@ -57,11 +57,19 @@ Historical-only test artifacts are intentionally excluded from this repository.
 
 ## Frontend
 
-The frontend is a polished preview application using a deterministic local
-adapter until a GenLayer wallet/client implementation is configured. Its write
-buttons produce clearly marked, non-broadcasting intents; no fake transaction
-is presented as a chain submission. Public contract configuration belongs in
-`frontend/.env` using the placeholders in `frontend/.env.example`.
+The frontend connects to the deployed Vektor Intelligent Contract on GenLayer
+Bradbury Testnet. It uses RainbowKit and Wagmi for injected wallet connection,
+and a centralized GenLayer client adapter for the four contract writes and
+the public read API. Contract state is the source of truth for markets,
+positions, activity, settlement, and claims.
+
+The market charts and live prices are display-only data from FXRatesAPI. They
+do not determine settlement; the contract's GenLayer settlement path remains
+authoritative.
+
+Create `frontend/.env.local` for local configuration using the safe placeholders
+in `frontend/.env.example`. Do not commit local environment files or private
+wallet credentials. The public contract address may be configured there.
 
 From `frontend/`:
 
@@ -86,6 +94,12 @@ genvm-lint typecheck contracts/Vektor.py --json
 
 The production ABI is 4 writes, 15 views, and 19 total public methods.
 
+The deployed Bradbury contract address is:
+
+```text
+0x10a27a4e2B62AE20410365e7a861106E551ADd33
+```
+
 ## Security and limitations
 
 - Settlement depends on two external historical providers and a unanimous
@@ -96,4 +110,3 @@ The production ABI is 4 writes, 15 views, and 19 total public methods.
 - Serialized JSON indexes have MVP-scale growth characteristics.
 - Persistent provider downtime can delay settlement indefinitely; it does not
   silently create a false outcome.
-- No contract or frontend deployment is performed by this repository workflow.

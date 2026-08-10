@@ -3,21 +3,27 @@ import { bpsToPct } from "@/lib/vektor/format";
 
 export function ProbabilityBar({
   upBps,
+  downBps,
   className,
   showLabels = true,
 }: {
   upBps: number;
+  downBps: number;
   className?: string;
   showLabels?: boolean;
 }) {
   const up = Math.min(100, Math.max(0, upBps / 100));
+  const down = Math.min(100, Math.max(0, downBps / 100));
+  const noPool = upBps === 0 && downBps === 0;
   return (
     <div className={cn("space-y-1.5", className)}>
       {showLabels && (
         <div className="flex items-baseline justify-between">
-          <span className="num text-sm font-semibold text-up">{bpsToPct(upBps)} UP</span>
+          <span className="num text-sm font-semibold text-up">
+            {noPool ? "—" : bpsToPct(upBps)} UP
+          </span>
           <span className="num text-sm font-semibold text-down">
-            {bpsToPct(10000 - upBps)} DOWN
+            {noPool ? "—" : bpsToPct(downBps)} DOWN
           </span>
         </div>
       )}
@@ -28,7 +34,7 @@ export function ProbabilityBar({
         />
         <div
           className="h-full rounded-r-full bg-down/80 transition-[width] duration-500 ease-out"
-          style={{ width: `${100 - up}%` }}
+          style={{ width: `${down}%` }}
         />
       </div>
     </div>

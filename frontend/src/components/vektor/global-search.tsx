@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import {
@@ -9,13 +10,15 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { MARKETS } from "@/lib/vektor/mock-data";
+import { marketsQuery } from "@/lib/vektor/queries";
 import { bpsToPct, formatDate } from "@/lib/vektor/format";
 import { cn } from "@/lib/utils";
 
 export function GlobalSearch({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const { data } = useQuery(marketsQuery({ sort: "volume" }));
+  const markets = data?.items ?? [];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,7 +53,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         <CommandList>
           <CommandEmpty>No markets match that query.</CommandEmpty>
           <CommandGroup heading="Markets">
-            {MARKETS.map((m) => (
+            {markets.map((m) => (
               <CommandItem
                 key={m.id}
                 value={`${m.id} ${m.instrument} ${m.question}`}
@@ -65,7 +68,9 @@ export function GlobalSearch({ className }: { className?: string }) {
                   <span className="font-semibold">{m.instrument}</span>
                   <span className="text-muted-foreground"> · {formatDate(m.targetDate)}</span>
                 </span>
-                <span className="num shrink-0 text-xs text-up">{bpsToPct(m.upBps)}</span>
+                <span className="num shrink-0 text-xs text-up">
+                  {m.upBps === 0 && m.downBps === 0 ? "—" : bpsToPct(m.upBps)}
+                </span>
               </CommandItem>
             ))}
           </CommandGroup>

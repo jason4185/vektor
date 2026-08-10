@@ -2,16 +2,15 @@ import { Link } from "@tanstack/react-router";
 import { Plus, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { INSTRUMENTS, PROTOCOL_CONFIG } from "@/lib/vektor/mock-data";
 import type { Instrument } from "@/lib/vektor/types";
+import { useQuery } from "@tanstack/react-query";
+import { supportedMarketsQuery } from "@/lib/vektor/queries";
 
-export type SortKey = "volume" | "newest" | "closing" | "activity";
+export type SortKey = "volume" | "newest" | "closing";
 
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "volume", label: "Largest pool" },
-  { key: "activity", label: "Most traders" },
   { key: "closing", label: "Closing soonest" },
   { key: "newest", label: "Newest" },
 ];
@@ -31,6 +30,7 @@ export function FilterRail({
   onReset: () => void;
   className?: string;
 }) {
+  const { data: instruments = [] } = useQuery(supportedMarketsQuery());
   return (
     <aside className={cn("space-y-4", className)}>
       <div className="panel p-4">
@@ -47,18 +47,22 @@ export function FilterRail({
           )}
         </div>
         <div className="mt-3 space-y-1">
-          {INSTRUMENTS.map((i) => (
+          {instruments.map((i) => (
             <label
-              key={i.symbol}
+              key={i.instrument}
               className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-surface-raised"
             >
               <Checkbox
-                checked={selected.includes(i.symbol)}
-                onCheckedChange={() => onToggle(i.symbol)}
+                checked={selected.includes(i.instrument)}
+                onCheckedChange={() => onToggle(i.instrument)}
               />
               <span className="min-w-0 flex-1">
-                <span className="num block text-sm font-semibold text-foreground">{i.symbol}</span>
-                <span className="block truncate text-xs text-muted-foreground">{i.name}</span>
+                <span className="num block text-sm font-semibold text-foreground">
+                  {i.instrument}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {i.category === "METAL" ? "Metals" : "FX"}
+                </span>
               </span>
             </label>
           ))}
@@ -86,24 +90,12 @@ export function FilterRail({
         </div>
       </div>
 
-      <div className="panel p-4">
-        <span className="label-xs">Protocol limits</span>
-        <dl className="mt-3 space-y-2.5 text-sm">
-          <Row label="Min stake" value={`${PROTOCOL_CONFIG.minStake} GEN`} />
-          <Row label="Max per wallet" value={`${PROTOCOL_CONFIG.maxStakePerWallet} GEN`} />
-          <Row label="Protocol fee" value={`${PROTOCOL_CONFIG.protocolFeeBps / 100}%`} />
-          <Separator className="bg-border" />
-          <Row label="Chain" value={PROTOCOL_CONFIG.chain} />
-        </dl>
-      </div>
-
       <div className="panel overflow-hidden">
         <div className="hairline-grid p-4">
           <Zap className="h-4 w-4 text-primary" />
-          <h4 className="mt-2 text-sm font-semibold text-foreground">Open your own line</h4>
+          <h4 className="mt-2 text-sm font-semibold text-foreground">Create a market</h4>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Any wallet can list a daily directional market. Pick an instrument and a session date —
-            the contract derives the reference close.
+            Choose an instrument and date. Vektor uses the previous weekday for comparison.
           </p>
           <Button asChild size="sm" className="mt-3 w-full gap-1.5">
             <Link to="/create">
@@ -113,14 +105,5 @@ export function FilterRail({
         </div>
       </div>
     </aside>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="num text-xs font-semibold text-foreground">{value}</dd>
-    </div>
   );
 }
