@@ -11,6 +11,7 @@ import type { Instrument } from "@/lib/vektor/types";
 import { formatGen } from "@/lib/vektor/format";
 import { useWallet } from "@/lib/vektor/wallet";
 import { LivePriceStrip } from "@/components/vektor/live-price";
+import { presentationStatus } from "@/lib/vektor/timing";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -43,7 +44,10 @@ function MarketsHome() {
 
   const totals = useMemo(() => {
     const pool = data.reduce((a, m) => a + m.upPool + m.downPool, 0);
-    const live = data.filter((m) => m.status === "OPEN").length;
+    const live = data.filter((m) => {
+      const phase = presentationStatus(m, Date.now());
+      return phase === "BETTING_OPEN" || phase === "OBSERVATION_ACTIVE";
+    }).length;
     return { pool, live };
   }, [data]);
 

@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { MARKET_PAGE_SIZE } from "./config";
 import { loadPosition, vektorContract } from "./contract";
 import type { Instrument, MarketQuery } from "./types";
+import { presentationStatus } from "./timing";
 
 const retry = 2;
 const base = { retry, refetchOnWindowFocus: true } as const;
@@ -45,7 +46,9 @@ export const marketQuery = (id: string) =>
       const m = query.state.data;
       if (!m) return 10_000;
       if (m.status === "CLOSED") return 120_000;
-      if (m.displayStatus === "OBSERVATION_ACTIVE") return 18_000;
+      const phase = presentationStatus(m, Date.now());
+      if (phase === "OBSERVATION_ACTIVE") return 18_000;
+      if (phase === "READY_FOR_SETTLEMENT") return 10_000;
       return 10_000;
     },
   });

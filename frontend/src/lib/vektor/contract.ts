@@ -27,6 +27,7 @@ import type {
   WriteResult,
   WriteOptions,
 } from "./types";
+import { presentationStatus } from "./timing";
 
 type AnyClient = {
   readContract(args: Record<string, unknown>): Promise<unknown>;
@@ -176,11 +177,16 @@ export const vektorContract: VektorContract = {
   async get_markets(query = {}) {
     const page = mapPage(await read("get_markets", [0n, BigInt(MARKET_PAGE_SIZE)]));
     let items = page.items;
+    const now = Date.now();
     if (query.category === "fx") items = items.filter((m) => m.category === "FX");
     if (query.category === "metals") items = items.filter((m) => m.category === "METAL");
-    if (query.category === "live") items = items.filter((m) => m.status === "OPEN");
+    if (query.category === "live")
+      items = items.filter((m) => {
+        const phase = presentationStatus(m, now);
+        return phase === "BETTING_OPEN" || phase === "OBSERVATION_ACTIVE";
+      });
     if (query.category === "settling")
-      items = items.filter((m) => m.displayStatus === "READY_FOR_SETTLEMENT");
+      items = items.filter((m) => presentationStatus(m, now) === "READY_FOR_SETTLEMENT");
     if (query.category === "resolved") items = items.filter((m) => m.status === "CLOSED");
     if (query.instruments?.length)
       items = items.filter((m) => query.instruments?.includes(m.instrument));

@@ -365,7 +365,7 @@ function MarketActions({ market }: { market: import("@/lib/vektor/types").Market
       setBusy(false);
     }
   }
-  const settlementReady = market.settlementReady || timing.status === "READY_FOR_SETTLEMENT";
+  const settlementReady = market.settlementReady && timing.status === "READY_FOR_SETTLEMENT";
   if (!settlementReady && !canClaim) return null;
   return (
     <div className="panel mt-4 space-y-3 p-4">

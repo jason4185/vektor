@@ -1,4 +1,5 @@
 import type { Position } from "./types";
+import { presentationStatus } from "./timing";
 
 export type ActivityKind =
   "prediction" | "live" | "ready" | "payout" | "refund" | "claimed" | "lost" | "won";
@@ -32,16 +33,17 @@ function participated(position: Position) {
   return position.bet.stake > 0 && position.bet.side !== "NONE";
 }
 
-export function deriveActivityItem(position: Position): ActivityItem | null {
+export function deriveActivityItem(position: Position, now = Date.now()): ActivityItem | null {
   if (!participated(position)) return null;
   const { market, bet, status, claimable } = position;
   const side = bet.side as "UP" | "DOWN";
+  const phase = presentationStatus(market, now);
   let kind: ActivityKind;
   if (status === "REFUND_AVAILABLE" && !bet.claimed) kind = "refund";
   else if (status === "WON" && !bet.claimed && claimable > 0) kind = "payout";
-  else if (market.displayStatus === "READY_FOR_SETTLEMENT") kind = "ready";
-  else if (market.displayStatus === "OBSERVATION_ACTIVE") kind = "live";
-  else if (market.displayStatus === "BETTING_OPEN") kind = "prediction";
+  else if (phase === "READY_FOR_SETTLEMENT") kind = "ready";
+  else if (phase === "OBSERVATION_ACTIVE") kind = "live";
+  else if (phase === "BETTING_OPEN") kind = "prediction";
   else if (bet.claimed || status === "CLAIMED") kind = "claimed";
   else if (status === "LOST") kind = "lost";
   else if (status === "WON") kind = "won";

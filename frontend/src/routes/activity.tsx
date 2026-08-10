@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -49,18 +49,23 @@ function ActivityPage() {
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const portfolio = useQuery(portfolioQuery(address));
   const due = useQuery(dueMarketsQuery());
   const items = useMemo(
     () =>
       (portfolio.data ?? [])
-        .map(deriveActivityItem)
+        .map((position) => deriveActivityItem(position, now))
         .filter((item): item is ActivityItem => item !== null)
         .sort(
           (a, b) =>
             activityPriority(a) - activityPriority(b) || b.targetDate.localeCompare(a.targetDate),
         ),
-    [portfolio.data],
+    [now, portfolio.data],
   );
   const filtered = items.filter((item) => activityMatches(item, filter));
 
