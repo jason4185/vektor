@@ -56,6 +56,18 @@ export function TargetDayChart({ market }: { market: Market }) {
   );
   const liveQuery = useQuery(livePricesQuery());
   const live = liveQuery.data?.[market.instrument];
+  const liveUpdatedAt = live ? new Date(live.updatedAt).getTime() : Number.NaN;
+  const liveAgeMs = Number.isFinite(liveUpdatedAt) ? Math.max(0, now - liveUpdatedAt) : Infinity;
+  const liveStatus =
+    liveQuery.isError || !live
+      ? "Price delayed"
+      : liveAgeMs < 90_000
+        ? "Live"
+        : liveAgeMs < 180_000
+          ? "Updating"
+          : [0, 6].includes(new Date(liveUpdatedAt).getUTCDay())
+            ? "Market closed"
+            : "Price delayed";
 
   useEffect(() => {
     if (!live) return;
@@ -149,9 +161,9 @@ export function TargetDayChart({ market }: { market: Market }) {
         )}
         <span className="ml-auto inline-flex items-center gap-1.5 text-muted-foreground">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${liveQuery.isFetching ? "animate-pulse bg-primary" : "bg-primary"}`}
+            className={`h-1.5 w-1.5 rounded-full ${liveStatus === "Live" && liveQuery.isFetching ? "animate-pulse bg-primary" : liveStatus === "Live" ? "bg-primary" : "bg-muted-foreground"}`}
           />
-          {complete ? "Target day complete" : liveQuery.isError ? "Price delayed" : "Live"}
+          {complete ? "Target day complete" : liveStatus}
         </span>
       </div>
 
