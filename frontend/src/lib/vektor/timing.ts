@@ -4,8 +4,10 @@ export function presentationStatus(market: Market, now: number): DisplayStatus {
   if (market.status === "CLOSED") {
     return market.displayStatus === "INCONCLUSIVE" ? "INCONCLUSIVE" : "SETTLED";
   }
+  if (market.status !== "OPEN" || !market.targetEnd) return "UNKNOWN";
   const target = Date.parse(`${market.targetDate}T00:00:00Z`);
   const end = Date.parse(market.targetEnd);
+  if (!Number.isFinite(target) || !Number.isFinite(end) || end <= target) return "UNKNOWN";
   if (Number.isFinite(target) && now < target) return "BETTING_OPEN";
   if (Number.isFinite(end) && now < end) return "OBSERVATION_ACTIVE";
   return "READY_FOR_SETTLEMENT";
@@ -48,5 +50,7 @@ export function statusLabel(status: MarketStatus, displayStatus?: DisplayStatus)
         ? "Refund"
         : displayStatus === "SETTLED" || status === "CLOSED"
           ? "Settled"
-          : "Betting open";
+          : displayStatus === "UNKNOWN"
+            ? "Unavailable"
+            : "Betting open";
 }

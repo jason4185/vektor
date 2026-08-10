@@ -20,8 +20,12 @@ export const livePricesQuery = () =>
     placeholderData: (previous) => previous,
   });
 
-export const marketHistoryQuery = (instrument: Instrument, createdAt: string, enabled = true) => {
-  const created = new Date(createdAt);
+export const marketHistoryQuery = (
+  instrument: Instrument,
+  createdAt: string | null,
+  enabled = true,
+) => {
+  const created = new Date(createdAt ?? "");
   return queryOptions({
     ...base,
     enabled: enabled && !Number.isNaN(created.getTime()),
@@ -55,11 +59,11 @@ export const referencePriceQuery = (
 export const targetDayQuery = (
   instrument: Instrument,
   targetDate: string,
-  targetEnd: string,
+  targetEnd: string | null,
   enabled: boolean,
 ) => {
   const target = new Date(`${targetDate}T00:00:00.000Z`);
-  const end = new Date(targetEnd);
+  const end = new Date(targetEnd ?? "");
   return queryOptions({
     ...base,
     enabled: enabled && !Number.isNaN(target.getTime()) && !Number.isNaN(end.getTime()),

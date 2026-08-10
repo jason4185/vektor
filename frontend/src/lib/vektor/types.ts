@@ -4,7 +4,12 @@ export type Side = "UP" | "DOWN";
 export type MarketStatus = "OPEN" | "CLOSED";
 export type Outcome = "NONE" | "UP" | "DOWN" | "INCONCLUSIVE";
 export type DisplayStatus =
-  "BETTING_OPEN" | "OBSERVATION_ACTIVE" | "READY_FOR_SETTLEMENT" | "SETTLED" | "INCONCLUSIVE";
+  | "BETTING_OPEN"
+  | "OBSERVATION_ACTIVE"
+  | "READY_FOR_SETTLEMENT"
+  | "SETTLED"
+  | "INCONCLUSIVE"
+  | "UNKNOWN";
 export type UserResult =
   "NOT_PARTICIPATED" | "PENDING" | "WON" | "LOST" | "REFUND_AVAILABLE" | "CLAIMED";
 export type ClaimType = "WIN" | "REFUND" | "NONE";
@@ -66,14 +71,16 @@ export interface Market {
   category: "FX" | "METAL";
   referenceDate: string;
   targetDate: string;
-  targetEnd: string;
-  settlementEligibleAt: string;
-  createdAt: string;
+  targetEnd: string | null;
+  settlementEligibleAt: string | null;
+  createdAt: string | null;
   status: MarketStatus;
   displayStatus: DisplayStatus;
   settlementReady: boolean;
   upPool: number;
   downPool: number;
+  upPoolUnits: bigint;
+  downPoolUnits: bigint;
   upBps: number;
   downBps: number;
   outcome: Outcome;
@@ -81,7 +88,6 @@ export interface Market {
   targetPrice: number | null;
   series: PricePoint[];
   evidence: Evidence | null;
-  creator: string;
   bettors: number | null;
   marketType?: string;
 }
@@ -129,7 +135,7 @@ export interface Page<T> {
   items: T[];
   offset: number;
   limit: number;
-  total: number;
+  total: number | null;
   hasMore: boolean;
   nextOffset?: number;
   scanned?: number;

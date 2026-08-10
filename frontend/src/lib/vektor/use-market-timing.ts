@@ -5,7 +5,7 @@ import { formatCountdown, presentationStatus } from "./timing";
 export function useMarketTiming(market: Market | null) {
   const [now, setNow] = useState(() => Date.now());
   const target = market ? Date.parse(`${market.targetDate}T00:00:00Z`) : Number.NaN;
-  const end = market ? Date.parse(market.targetEnd) : Number.NaN;
+  const end = market?.targetEnd ? Date.parse(market.targetEnd) : Number.NaN;
 
   useEffect(() => {
     const tick = () => setNow(Date.now());
@@ -21,7 +21,7 @@ export function useMarketTiming(market: Market | null) {
     };
   }, [end, target]);
 
-  const status = market ? presentationStatus(market, now) : "BETTING_OPEN";
+  const status = market ? presentationStatus(market, now) : "UNKNOWN";
   const until = status === "BETTING_OPEN" ? target : status === "OBSERVATION_ACTIVE" ? end : null;
   return {
     now,

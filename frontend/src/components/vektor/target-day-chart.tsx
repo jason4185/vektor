@@ -26,7 +26,7 @@ export function TargetDayChart({ market }: { market: Market }) {
   const [liveSamples, setLiveSamples] = useState<PriceSample[]>([]);
   const [hovered, setHovered] = useState<number | null>(null);
   const targetMs = new Date(`${market.targetDate}T00:00:00Z`).getTime();
-  const targetEndMs = new Date(market.targetEnd).getTime();
+  const targetEndMs = market.targetEnd ? new Date(market.targetEnd).getTime() : Number.NaN;
   const targetStarted = Number.isFinite(targetMs) && now >= targetMs;
   const complete = Number.isFinite(targetEndMs) && now >= targetEndMs;
 

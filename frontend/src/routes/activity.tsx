@@ -12,7 +12,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/vektor/states";
 import { useWallet } from "@/lib/vektor/wallet";
-import { dueMarketsQuery, portfolioQuery } from "@/lib/vektor/queries";
+import {
+  dueMarketsQuery,
+  marketQuery,
+  portfolioQuery,
+  userStatusQuery,
+} from "@/lib/vektor/queries";
 import { vektorContract } from "@/lib/vektor/contract";
 import { formatWalletError } from "@/lib/vektor/errors";
 import { formatDate, formatGen } from "@/lib/vektor/format";
@@ -24,6 +29,7 @@ import {
   type ActivityItem,
 } from "@/lib/vektor/activity";
 import { cn } from "@/lib/utils";
+import { reconcileAcceptedWrite } from "@/lib/vektor/reconciliation";
 
 export const Route = createFileRoute("/activity")({
   head: () => ({
@@ -49,6 +55,7 @@ function ActivityPage() {
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
@@ -84,10 +91,32 @@ function ActivityPage() {
     const busyKey = item.action === "settle" ? `settle-${item.marketId}` : item.marketId;
     setBusyId(busyKey);
     setError(null);
+    setNotice(null);
     try {
-      if (item.action === "settle") await vektorContract.settle_market(item.marketId);
-      else await vektorContract.claim_payout(item.marketId);
+      const result =
+        item.action === "settle"
+          ? await vektorContract.settle_market(item.marketId)
+          : await vektorContract.claim_payout(item.marketId);
+      const reconciled =
+        item.action === "settle"
+          ? await reconcileAcceptedWrite(
+              result,
+              () => queryClient.fetchQuery(marketQuery(item.marketId)),
+              (market) => market.status === "CLOSED",
+            )
+          : await reconcileAcceptedWrite(
+              result,
+              () => queryClient.fetchQuery(userStatusQuery(item.marketId, address)),
+              (status) => status.claimed,
+            );
       await refresh(item.marketId);
+      if (!result.confirmed) {
+        setNotice("Submitted. Vektor is still confirming the transaction.");
+      } else if (!reconciled) {
+        setNotice("Accepted by GenLayer, but the updated contract state is still catching up.");
+      } else {
+        setNotice(item.action === "settle" ? "Market settled." : "Claim confirmed.");
+      }
     } catch (reason) {
       setError(formatWalletError(reason));
     } finally {
@@ -134,6 +163,7 @@ function ActivityPage() {
         ))}
       </div>
       {error && <p className="mt-3 text-sm text-down">{error}</p>}
+      {notice && <p className="mt-3 text-sm text-muted-foreground">{notice}</p>}
       {portfolio.isPending && <LoadingBlock label="Loading your activity" />}
       {portfolio.isError && <ErrorState onRetry={() => void portfolio.refetch()} />}
       {!portfolio.isPending && !portfolio.isError && filtered.length === 0 && (

@@ -44,16 +44,20 @@ const client = () =>
 const raw = (value: unknown): any => (typeof value === "string" ? JSON.parse(value) : value);
 const text = (value: unknown) => String(value ?? "");
 const gen = (value: unknown) => Number(formatUnits(BigInt(text(value)), 18));
-const timestamp = (value: unknown) => {
+const timestamp = (value: unknown): string | null => {
   const s = text(value);
+  if (!s || s === "0") return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T00:00:00.000Z`;
   try {
-    const seconds = Number(BigInt(s || "0"));
-    return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : "";
+    const seconds = Number(BigInt(s));
+    return Number.isSafeInteger(seconds) && seconds > 0
+      ? new Date(seconds * 1000).toISOString()
+      : null;
   } catch {
-    return "";
+    return null;
   }
 };
+const genUnits = (value: unknown) => BigInt(text(value));
 const price = (value: unknown) => {
   const n = Number(BigInt(text(value))) / 1_000_000;
   return Number.isFinite(n) ? n : null;
@@ -96,6 +100,8 @@ function mapMarket(value: unknown, summary = false): Market {
     settlementReady: Boolean(m.settlement_ready),
     upPool: gen(m.up_total ?? m.up),
     downPool: gen(m.down_total ?? m.down),
+    upPoolUnits: genUnits(m.up_total ?? m.up),
+    downPoolUnits: genUnits(m.down_total ?? m.down),
     upBps: Number(m.up_bps ?? 0),
     downBps: Number(m.down_bps ?? 0),
     outcome: m.outcome,
@@ -103,7 +109,6 @@ function mapMarket(value: unknown, summary = false): Market {
     targetPrice: evidence ? price(evidence.at) : null,
     series: [],
     evidence,
-    creator: "Anyone",
     bettors: summary ? null : null,
     marketType: m.market_type,
   };
@@ -111,12 +116,17 @@ function mapMarket(value: unknown, summary = false): Market {
 
 function mapPage(value: unknown): Page<Market> {
   const p = raw(value) as any;
+  const total = Number(p.total);
+  if (!Number.isSafeInteger(total) || total < 0) {
+    throw new Error("Market pagination returned an invalid total.");
+  }
+  const markets = p.markets ?? [];
   return {
-    items: (p.markets ?? []).map((m: unknown) => mapMarket(m, true)),
+    items: markets.map((m: unknown) => mapMarket(m, true)),
     offset: Number(p.offset),
     limit: Number(p.limit),
-    total: Number(p.total),
-    hasMore: Number(p.offset) + (p.markets ?? []).length < Number(p.total),
+    total,
+    hasMore: Number(p.offset) + markets.length < total,
   };
 }
 
@@ -177,35 +187,55 @@ export const vektorContract: VektorContract = {
     return raw(await read("get_market_ids")) as string[];
   },
   async get_markets(query = {}) {
-    const page = mapPage(await read("get_markets", [0n, BigInt(MARKET_PAGE_SIZE)]));
-    let items = page.items;
+    const pages: Page<Market>[] = [];
+    let offset = 0;
+    const seenOffsets = new Set<number>();
+    for (let iteration = 0; iteration < 1000; iteration += 1) {
+      if (seenOffsets.has(offset)) throw new Error("Market pagination did not advance.");
+      seenOffsets.add(offset);
+      const page = mapPage(await read("get_markets", [BigInt(offset), BigInt(MARKET_PAGE_SIZE)]));
+      pages.push(page);
+      if (!page.hasMore) break;
+      const nextOffset = page.offset + page.items.length;
+      if (nextOffset <= offset || page.items.length === 0)
+        throw new Error("Market pagination returned invalid metadata.");
+      offset = nextOffset;
+      if (iteration === 999) throw new Error("Market pagination exceeded safety limit.");
+    }
+    const items = [...new Map(pages.flatMap((page) => page.items).map((m) => [m.id, m])).values()];
+    const page = {
+      items,
+      offset: 0,
+      limit: MARKET_PAGE_SIZE,
+      total: items.length,
+      hasMore: false,
+    } satisfies Page<Market>;
+    let filtered = page.items;
     const now = Date.now();
-    if (query.category === "fx") items = items.filter((m) => m.category === "FX");
-    if (query.category === "metals") items = items.filter((m) => m.category === "METAL");
+    if (query.category === "fx") filtered = filtered.filter((m) => m.category === "FX");
+    if (query.category === "metals") filtered = filtered.filter((m) => m.category === "METAL");
     if (query.category === "live")
-      items = items.filter((m) => {
+      filtered = filtered.filter((m) => {
         const phase = presentationStatus(m, now);
         return phase === "BETTING_OPEN" || phase === "OBSERVATION_ACTIVE";
       });
     if (query.category === "settling")
-      items = items.filter((m) => presentationStatus(m, now) === "READY_FOR_SETTLEMENT");
-    if (query.category === "resolved") items = items.filter((m) => m.status === "CLOSED");
+      filtered = filtered.filter((m) => presentationStatus(m, now) === "READY_FOR_SETTLEMENT");
+    if (query.category === "resolved") filtered = filtered.filter((m) => m.status === "CLOSED");
     if (query.instruments?.length)
-      items = items.filter((m) => query.instruments?.includes(m.instrument));
+      filtered = filtered.filter((m) => query.instruments?.includes(m.instrument));
     if (query.search?.trim()) {
       const q = query.search.trim().toLowerCase();
-      items = items.filter((m) =>
-        `${m.id} ${m.instrument} ${m.question}`.toLowerCase().includes(q),
-      );
+      filtered = filtered.filter((m) => `${m.instrument} ${m.question}`.toLowerCase().includes(q));
     }
-    items.sort((a, b) =>
+    filtered.sort((a, b) =>
       query.sort === "newest"
         ? Number(b.id) - Number(a.id)
         : query.sort === "closing"
-          ? a.targetEnd.localeCompare(b.targetEnd)
+          ? (a.targetEnd ?? "").localeCompare(b.targetEnd ?? "")
           : b.upPool + b.downPool - a.upPool - a.downPool,
     );
-    return { ...page, items };
+    return { ...page, total: filtered.length, items: filtered };
   },
   async get_user_bet(market_id, address) {
     const p = raw(await read("get_user_bet", [BigInt(market_id), address])) as any;
@@ -229,7 +259,7 @@ export const vektorContract: VektorContract = {
       items: p.market_ids as string[],
       offset: Number(p.offset),
       limit: Number(p.limit),
-      total: Number(p.next_offset) + (p.has_more ? 1 : 0),
+      total: null,
       hasMore: Boolean(p.has_more),
       nextOffset: Number(p.next_offset),
       scanned: Number(p.scanned),

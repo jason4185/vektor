@@ -41,12 +41,13 @@ export function deriveActivityItem(position: Position, now = Date.now()): Activi
   let kind: ActivityKind;
   if (status === "REFUND_AVAILABLE" && !bet.claimed) kind = "refund";
   else if (status === "WON" && !bet.claimed && claimable > 0) kind = "payout";
-  else if (phase === "READY_FOR_SETTLEMENT") kind = "ready";
+  else if (phase === "READY_FOR_SETTLEMENT" && market.settlementReady) kind = "ready";
   else if (phase === "OBSERVATION_ACTIVE") kind = "live";
   else if (phase === "BETTING_OPEN") kind = "prediction";
   else if (bet.claimed || status === "CLAIMED") kind = "claimed";
   else if (status === "LOST") kind = "lost";
   else if (status === "WON") kind = "won";
+  else if (phase === "UNKNOWN") return null;
   else kind = "prediction";
 
   const group: ActivityItem["group"] =

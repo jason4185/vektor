@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Market, Side, TxState } from "@/lib/vektor/types";
-import { bpsToPct, formatGen } from "@/lib/vektor/format";
+import { bpsToPct, formatGen, formatGenUnits, formatMultipleUnits } from "@/lib/vektor/format";
 import { vektorContract } from "@/lib/vektor/contract";
 import { remainingCapacityQuery, userBetQuery } from "@/lib/vektor/queries";
 import { useWallet } from "@/lib/vektor/wallet";
@@ -41,7 +41,8 @@ export function TradeTicket({ market, className }: { market: Market; className?:
   }, [existingBet]);
 
   const numeric = Number(amount);
-  const valid = Number.isFinite(numeric) && numeric > 0;
+  const amountUnits = parseBetUnits(amount);
+  const valid = Number.isFinite(numeric) && numeric > 0 && amountUnits > 0n;
   const bettingOpen = market.status === "OPEN" && timing.bettingOpen;
   const closed = !bettingOpen;
   const lockedSide =
@@ -58,16 +59,14 @@ export function TradeTicket({ market, className }: { market: Market; className?:
   }, [closed, valid, numeric, remaining, lockedSide, side]);
 
   const sidePool = side === "UP" ? market.upPool : market.downPool;
-  const amountUnits = valid ? parseDisplayUnits(amount) : 0n;
-  const poolUnits = parseDisplayUnits((market.upPool + market.downPool).toFixed(6));
-  const sidePoolUnits = parseDisplayUnits(sidePool.toFixed(6));
+  const poolUnits = market.upPoolUnits + market.downPoolUnits;
+  const sidePoolUnits = side === "UP" ? market.upPoolUnits : market.downPoolUnits;
   const payoutUnits =
     valid && sidePoolUnits + amountUnits > 0n
       ? ((poolUnits + amountUnits) * amountUnits) / (sidePoolUnits + amountUnits)
       : 0n;
-  const payout = Number(payoutUnits) / 1_000_000;
   const impliedBps = side === "UP" ? market.upBps : market.downBps;
-  const multiple = valid && numeric > 0 ? payout / numeric : 0;
+  const multipleUnits = valid && amountUnits > 0n ? (payoutUnits * 100n) / amountUnits : 0n;
 
   async function submit() {
     if (!address) {
@@ -263,13 +262,13 @@ export function TradeTicket({ market, className }: { market: Market; className?:
           />
           <Row
             label="Estimated payout"
-            value={`${formatGen(payout)} GEN`}
+            value={`${formatGenUnits(payoutUnits)} GEN`}
             tone={side === "UP" ? "up" : "down"}
           />
-          <Row label="Payout multiple" value={`${multiple.toFixed(2)}×`} />
+          <Row label="Payout multiple" value={`${formatMultipleUnits(multipleUnits)}×`} />
           <Row
             label="Pool after fill"
-            value={`${formatGen(market.upPool + market.downPool + (valid ? numeric : 0))} GEN`}
+            value={`${formatGenUnits(poolUnits + (valid ? amountUnits : 0n))} GEN`}
           />
         </dl>
 
@@ -355,9 +354,9 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "up"
   );
 }
 
-function parseDisplayUnits(value: string) {
+function parseBetUnits(value: string) {
   try {
-    return parseUnits(value, 6);
+    return parseUnits(value, 18);
   } catch {
     return 0n;
   }

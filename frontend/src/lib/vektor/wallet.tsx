@@ -25,9 +25,23 @@ export const wagmiConfig = createConfig({
 export function WalletProvider({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig}>
-      <RainbowKitProvider>{children}</RainbowKitProvider>
+      <RainbowKitProvider>
+        <WalletSync />
+        {children}
+      </RainbowKitProvider>
     </WagmiProvider>
   );
+}
+
+function WalletSync() {
+  const account = useAccount();
+  const { connectors } = useConnect();
+  const connector = connectors[0];
+  useEffect(() => {
+    setActiveWallet(account.address && connector ? { account: account.address, connector } : null);
+  }, [account.address, connector]);
+  useEffect(() => () => setActiveWallet(null), []);
+  return null;
 }
 
 export function useWallet() {
@@ -37,10 +51,6 @@ export function useWallet() {
   const { switchChain } = useSwitchChain();
   const balance = useBalance({ address: account.address, chainId: GENLAYER_CHAIN.id });
   const connector = connectors[0];
-  useEffect(() => {
-    setActiveWallet(account.address && connector ? { account: account.address, connector } : null);
-    return () => setActiveWallet(null);
-  }, [account.address, connector]);
   const status = connecting ? "connecting" : account.isConnected ? "connected" : "disconnected";
   return useMemo(
     () => ({

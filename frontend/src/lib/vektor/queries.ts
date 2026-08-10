@@ -4,6 +4,25 @@ import { loadPosition, vektorContract } from "./contract";
 import type { Instrument, MarketQuery } from "./types";
 import { presentationStatus } from "./timing";
 
+const DETAIL_READ_CONCURRENCY = 6;
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>) {
+  const results: Array<R | undefined> = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = await fn(items[index]!);
+      } catch {
+        results[index] = undefined;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results.filter((value): value is R => value !== undefined);
+}
+
 const retry = 2;
 const base = { retry, refetchOnWindowFocus: true } as const;
 function marketQueryKey(query: MarketQuery) {
@@ -99,14 +118,21 @@ export const dueMarketsQuery = () =>
     queryFn: async () => {
       const ids: string[] = [];
       let offset = 0;
-      while (true) {
+      const seenOffsets = new Set<number>();
+      for (let pageNumber = 0; pageNumber < 1000; pageNumber += 1) {
+        if (seenOffsets.has(offset)) throw new Error("Due-market pagination did not advance.");
+        seenOffsets.add(offset);
         const page = await vektorContract.get_due_market_ids(offset, MARKET_PAGE_SIZE);
         ids.push(...page.items);
         if (!page.hasMore || page.nextOffset === undefined) break;
+        if (page.nextOffset <= offset)
+          throw new Error("Due-market pagination returned invalid metadata.");
         offset = page.nextOffset;
+        if (pageNumber === 999) throw new Error("Due-market pagination exceeded safety limit.");
       }
-      const markets = [];
-      for (const id of ids) markets.push(await vektorContract.get_market(id));
+      const markets = await mapWithConcurrency(ids, DETAIL_READ_CONCURRENCY, (id) =>
+        vektorContract.get_market(id),
+      );
       return markets;
     },
     placeholderData: (previous) => previous,
@@ -136,14 +162,22 @@ export const portfolioQuery = (address: string | null) =>
     queryFn: async () => {
       const ids: string[] = [];
       let offset = 0;
-      while (true) {
+      const seenOffsets = new Set<number>();
+      for (let pageNumber = 0; pageNumber < 1000; pageNumber += 1) {
+        if (seenOffsets.has(offset)) throw new Error("User-market pagination did not advance.");
+        seenOffsets.add(offset);
         const page = await vektorContract.get_user_market_ids(address!, offset, MARKET_PAGE_SIZE);
         ids.push(...page.items);
         if (!page.hasMore || page.items.length === 0) break;
-        offset += page.items.length;
+        const nextOffset = page.offset + page.items.length;
+        if (nextOffset <= offset)
+          throw new Error("User-market pagination returned invalid metadata.");
+        offset = nextOffset;
+        if (pageNumber === 999) throw new Error("User-market pagination exceeded safety limit.");
       }
-      const positions = [];
-      for (const id of ids) positions.push(await loadPosition(address!, id));
+      const positions = await mapWithConcurrency(ids, DETAIL_READ_CONCURRENCY, (id) =>
+        loadPosition(address!, id),
+      );
       return positions;
     },
     placeholderData: (previous) => previous,

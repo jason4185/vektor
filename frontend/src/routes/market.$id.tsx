@@ -138,7 +138,6 @@ function MarketDetail() {
               label="Ready to settle"
               value={formatDateTime(market.settlementEligibleAt)}
             />
-            <SnapshotRow label="Created by" value={market.creator} />
           </div>
 
           {/* Disclosures */}

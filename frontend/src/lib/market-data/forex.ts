@@ -66,6 +66,71 @@ function apiDate(date: Date) {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }
 
+const HISTORY_CONCURRENCY = 4;
+const CHUNK_MS = 5 * 60 * 60_000;
+const RECENT_CACHE_MS = 60_000;
+const chunkCache = new Map<string, { fetchedAt: number; points: PriceSample[] }>();
+const inFlightChunks = new Map<string, Promise<PriceSample[]>>();
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>) {
+  const results: R[] = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index]!);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
+async function fetchPriceChunk(
+  instrument: Instrument,
+  from: number,
+  to: number,
+  signal?: AbortSignal,
+): Promise<PriceSample[]> {
+  const key = `${instrument}:${from}:${to}`;
+  const now = Date.now();
+  const cached = chunkCache.get(key);
+  const isRecent = to > now - CHUNK_MS;
+  if (cached && (!isRecent || now - cached.fetchedAt < RECENT_CACHE_MS)) return cached.points;
+  const existing = inFlightChunks.get(key);
+  if (existing) return existing;
+  const request = (async () => {
+    const url = new URL(`${API_BASE}/timeseries`);
+    url.searchParams.set("start_date", apiDate(new Date(from)));
+    url.searchParams.set("end_date", apiDate(new Date(to)));
+    url.searchParams.set("base", "USD");
+    url.searchParams.set("currencies", providerCurrency(instrument));
+    url.searchParams.set("accuracy", "1m");
+    url.searchParams.set("places", "12");
+    url.searchParams.set("format", "json");
+    const data = await getJson(url, signal);
+    assertBaseAndSuccess(data);
+    const rates = requireRates(data["rates"]);
+    const points: PriceSample[] = [];
+    for (const [timestamp, rawRates] of Object.entries(rates)) {
+      const time = new Date(timestamp).getTime();
+      if (!Number.isFinite(time) || time < from || time >= to) continue;
+      const nested = requireRates(rawRates);
+      const scaled = normalizeRate(instrument, nested[providerCurrency(instrument)]);
+      if (scaled !== null)
+        points.push({ timestamp: time, price: scaledToNumber(scaled), raw: scaled.toString() });
+    }
+    points.sort((a, b) => a.timestamp - b.timestamp);
+    chunkCache.set(key, { fetchedAt: Date.now(), points });
+    return points;
+  })();
+  inFlightChunks.set(key, request);
+  try {
+    return await request;
+  } finally {
+    inFlightChunks.delete(key);
+  }
+}
+
 export async function fetchTargetDaySeries(
   instrument: Instrument,
   target: Date,
@@ -104,40 +169,16 @@ export async function fetchPriceSeries(
   if (end.getTime() <= start.getTime()) return [];
   // FXRatesAPI permits at most roughly six hours for 1-minute accuracy.
   // Keep each request comfortably inside that limit, then merge by timestamp.
-  const chunkMs = 5 * 60 * 60_000;
   const chunks: Array<[number, number]> = [];
-  for (let cursor = start.getTime(); cursor < end.getTime(); cursor += chunkMs) {
-    chunks.push([cursor, Math.min(cursor + chunkMs, end.getTime())]);
+  for (let cursor = start.getTime(); cursor < end.getTime(); cursor += CHUNK_MS) {
+    chunks.push([cursor, Math.min(cursor + CHUNK_MS, end.getTime())]);
   }
-  const responses = await Promise.all(
-    chunks.map(async ([from, to]) => {
-      const url = new URL(`${API_BASE}/timeseries`);
-      url.searchParams.set("start_date", apiDate(new Date(from)));
-      url.searchParams.set("end_date", apiDate(new Date(to)));
-      url.searchParams.set("base", "USD");
-      url.searchParams.set("currencies", providerCurrency(instrument));
-      url.searchParams.set("accuracy", "1m");
-      url.searchParams.set("places", "12");
-      url.searchParams.set("format", "json");
-      const data = await getJson(url, signal);
-      assertBaseAndSuccess(data);
-      return requireRates(data["rates"]);
-    }),
+  const responses = await mapWithConcurrency(chunks, HISTORY_CONCURRENCY, ([from, to]) =>
+    fetchPriceChunk(instrument, from, to, signal),
   );
   const byTimestamp = new Map<number, PriceSample>();
-  for (const rates of responses) {
-    for (const [timestamp, rawRates] of Object.entries(rates)) {
-      const time = new Date(timestamp).getTime();
-      if (!Number.isFinite(time) || time < start.getTime() || time >= end.getTime()) continue;
-      const nested = requireRates(rawRates);
-      const scaled = normalizeRate(instrument, nested[providerCurrency(instrument)]);
-      if (scaled !== null)
-        byTimestamp.set(time, {
-          timestamp: time,
-          price: scaledToNumber(scaled),
-          raw: scaled.toString(),
-        });
-    }
+  for (const points of responses) {
+    for (const point of points) byTimestamp.set(point.timestamp, point);
   }
   return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);
 }

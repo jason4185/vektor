@@ -1,4 +1,5 @@
 import type { Instrument, InstrumentMeta } from "./types";
+import { formatUnits } from "viem";
 
 const META: Record<
   Instrument,
@@ -58,11 +59,26 @@ export function formatDate(iso: string) {
         timeZone: "UTC",
       });
 }
-export function formatDateTime(iso: string) {
+export function formatDateTime(iso: string | null) {
+  if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? "—"
     : `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" })} · ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC`;
+}
+export function formatGenUnits(value: bigint, digits = 2) {
+  return formatFixedUnits(value, 18, digits);
+}
+export function formatMultipleUnits(value: bigint, digits = 2) {
+  return formatFixedUnits(value, 2, digits);
+}
+function formatFixedUnits(value: bigint, decimals: number, digits: number) {
+  const raw = formatUnits(value, decimals);
+  const parts = raw.split(".");
+  const integer = parts[0] ?? "0";
+  const fraction = parts[1] ?? "";
+  const rounded = `${fraction}${"0".repeat(digits)}`.slice(0, digits);
+  return `${BigInt(integer).toLocaleString("en-US")}.${rounded}`;
 }
 export function relativeTime(iso: string) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
