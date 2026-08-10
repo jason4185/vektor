@@ -2,302 +2,300 @@
 
 ## Daily FX & metals prediction markets, settled by GenLayer
 
-Vektor turns daily financial-market movement into a simple question: will a
-supported instrument finish **UP** or **DOWN** compared with the previous
-trading day? Users stake native GEN into a shared pari-mutuel pool, while the
-Vektor Intelligent Contract uses GenLayer validators to verify the real-world
-result from two independent price sources.
+Vektor is a daily prediction market for FX and metals. Users choose whether a
+supported instrument will finish **UP** or **DOWN** on its Prediction Day,
+stake native GEN into a shared pool, and claim from the pool if their side
+wins. The Vektor Intelligent Contract uses GenLayer validators and two
+external price sources to verify the final result.
 
-Anyone can create a market, anyone can settle an eligible market, and no
-frontend or settlement caller can choose the evidence or outcome.
+Anyone can create a supported market, and anyone can trigger settlement after
+its Prediction Day has ended.
 
-| Resource | Details |
-| --- | --- |
-| Network | GenLayer Bradbury Testnet |
-| Contract | `0x10a27a4e2B62AE20410365e7a861106E551ADd33` |
-| Repository | [github.com/jason4185/vektor](https://github.com/jason4185/vektor) |
-| RPC | `https://rpc-bradbury.genlayer.com` |
+| Resource  | Details                                         |
+| --------- | ----------------------------------------------- |
+| Live Demo | [Open Vektor](https://vektor-dusky.vercel.app/) |
+| Network   | GenLayer Bradbury Testnet                       |
+| Contract  | `0x10a27a4e2B62AE20410365e7a861106E551ADd33`    |
 
 ## Vision
 
 Traditional prediction markets often focus on politics, news, or one-off
-events. Vektor applies the same approachable UP/DOWN interaction to liquid
-financial markets without asking users to understand strikes, derivatives, or
-complex order books.
-
-Each market is a daily directional question such as:
+events. Vektor applies the same simple binary interaction to daily financial
+markets:
 
 ```text
 XAU/USD: UP or DOWN on Aug 11?
 ```
 
-Users choose a side, stake GEN, and share the pool if their side wins. The
-result does not depend on a project-controlled operator or a single manually
-submitted price. GenLayer validators independently verify evidence from the
-contract's configured sources and apply the result according to fixed rules.
+Users do not need strike prices, order books, or complex derivatives. They
+choose a direction and stake GEN.
+
+## Why Vektor Needs GenLayer
+
+Vektor's outcome depends on real-world prices that do not exist on-chain: the
+relevant price on the previous trading day, the price on Prediction Day, and
+whether independent sources agree on the direction. A conventional smart
+contract cannot fetch and verify that external evidence by itself.
+
+GenLayer lets validators independently execute the Intelligent Contract's
+external-data verification logic and reach consensus on the result. The
+settlement caller only starts `settle_market(market_id)`; they cannot choose
+the price, evidence, direction, or outcome. This turns settlement from a
+manual backend decision into contract-defined, validator-executed verification.
 
 ## Key Innovations
 
-### Daily financial markets
+### Daily directional markets
 
-Vektor focuses on four curated instruments:
+Vektor supports four curated instruments and one clear daily UP/DOWN question
+for each market.
 
-| Market | Category |
-| --- | --- |
-| GBP/USD | FX |
-| USD/JPY | FX |
-| XAU/USD | Metals |
-| XAG/USD | Metals |
+### Automatic previous-trading-day reference
 
-Every market asks one clear daily directional question.
+The contract derives the comparison date from the selected Prediction Day. For
+example, a Monday Prediction Day uses Friday as its previous trading day.
 
-### Previous-trading-day reference
-
-The contract derives the comparison day automatically. A Monday Prediction
-Day compares against Friday under the contract's previous-weekday rule. Users
-do not supply the settlement reference price or evidence.
-
-### Two-source Intelligent Settlement
+### Intelligent two-source settlement
 
 FXRatesAPI and Fawaz Currency API independently compare the previous-trading-day
-price with the Prediction Day price. The directions must agree. If the sources
-disagree, return unusable evidence, or produce a flat/tied comparison, the
-market resolves to a refund state rather than forcing a directional result.
+price with the Prediction Day price. Their directions must agree.
 
-### Permissionless creation and settlement
+### Permissionless lifecycle
 
-Market creation and settlement are public contract actions. A settler submits
-only a market ID; the caller cannot choose prices, evidence, or the outcome.
+Anyone can create supported markets and anyone can trigger eligible settlement.
+Callers cannot choose the evidence, direction, or final outcome.
 
 ### Pari-mutuel GEN pools
 
-Users stake on one side, may add to that same side, and winners share the full
-pool in proportion to their winning stake. A market with no winning-side stake
-is safely treated as a refund by the contract.
+Users stake on one side, may add to that same side, and winners receive a
+proportional share of the total pool.
 
-### A real market experience
+## Supported Markets
 
-The frontend displays real provider prices, fixed five-minute candles, market
-creation-to-present history, previous-trading-day reference lines, Prediction
-Day markers, lifecycle countdowns, and contract-derived positions. Display
-market data is intentionally separate from authoritative settlement.
+| Market  | Category |
+| ------- | -------- |
+| GBP/USD | FX       |
+| USD/JPY | FX       |
+| XAU/USD | Metals   |
+| XAG/USD | Metals   |
 
 ## How a Vektor Market Works
 
-1. Anyone selects an instrument and a weekday Prediction Day.
+1. Select a supported instrument and a weekday Prediction Day.
 2. The contract derives the previous trading day and market timestamps.
-3. Betting remains open until Prediction Day begins at `00:00 UTC`.
-4. Users stake native GEN on UP or DOWN.
-5. Prediction Day runs for 24 hours.
-6. After the day ends, anyone may call `settle_market`.
-7. GenLayer validators verify the two configured settlement sources.
-8. The market closes UP, DOWN, or Refund.
-9. Winners or refund-eligible users call `claim_payout`.
+3. Users stake GEN on UP or DOWN before Prediction Day begins.
+4. Prediction Day runs for 24 hours.
+5. After it ends, anyone may call `settle_market(market_id)`.
+6. GenLayer validators verify the two configured price sources.
+7. The market resolves UP, DOWN, or Refund.
+8. Eligible users claim directly from the contract.
 
 ```mermaid
 flowchart LR
-    A[Market Created] --> B[Betting Open]
-    B --> C[Prediction Day Starts]
-    C --> D[Prediction Day Live]
-    D --> E[Prediction Day Ends]
-    E --> F[Ready to Settle]
-    F --> G[GenLayer Verification]
-    G --> H{Outcome}
-    H -->|UP| I[UP Wins]
-    H -->|DOWN| J[DOWN Wins]
-    H -->|Unable to Confirm| K[Refund]
-    I --> L[Claim Payout]
-    J --> L
-    K --> M[Claim Refund]
+    A[Market created] --> B[Betting open]
+    B --> C[Prediction Day live]
+    C --> D[Prediction Day ends]
+    D --> E[Ready to settle]
+    E --> F[Validator verification]
+    F --> G{Outcome}
+    G -->|UP| H[Claim payout]
+    G -->|DOWN| H
+    G -->|Refund| I[Claim refund]
 ```
 
 ## Market Time Model
 
 ```mermaid
-flowchart LR
-    P[Previous Trading Day] --> R[Reference Price]
-    C[Market Created] --> B[Betting Window]
-    B --> T[Prediction Day 00:00 UTC]
-    R --> T
-    T --> O[24h Prediction Day]
-    O --> E[Settlement Eligible]
+flowchart TD
+    A[Previous trading day] --> B[Reference price]
+    C[Market created] --> D[Betting open]
+    D --> E[Prediction Day starts at 00:00 UTC]
+    B --> E
+    E --> F[24-hour Prediction Day]
+    F --> G[Ready to settle]
 ```
 
-The frontend's live countdown is calculated from these contract-backed
-timestamps. It does not create additional RPC traffic every second.
+Markets are created with a canonical `YYYY-MM-DD` Prediction Day. The contract
+accepts weekdays only, allows dates up to 366 days ahead, derives the previous
+trading day, and sets `target_end` exactly 24 hours after the Prediction Day starts.
+Betting closes at `target`, and settlement is eligible at `target_end` while
+the market is still open.
+
+## Intelligent Settlement
+
+Settlement is called with only a market ID. The contract's validator-executed
+logic fetches the previous-trading-day and Prediction Day values from:
+
+- FXRatesAPI
+- Fawaz Currency API, with its configured fallback source when needed
+
+Each source independently derives a direction:
+
+```text
+Both sources say UP    -> UP
+Both sources say DOWN  -> DOWN
+Anything else           -> INCONCLUSIVE / Refund
+```
+
+The sources do not need to return identical numeric values; their directions
+must agree. Invalid, missing, tied, or disagreeing evidence cannot produce a
+directional result. Temporary provider failures can delay settlement rather
+than silently closing the market.
+
+```mermaid
+flowchart TD
+    A[settle_market(market_id)] --> B[GenLayer validator execution]
+    B --> C[FXRatesAPI direction]
+    B --> D[Fawaz direction]
+    C --> E{Directions agree?}
+    D --> E
+    E -->|UP| F[Close market as UP]
+    E -->|DOWN| G[Close market as DOWN]
+    E -->|No| H[Close market as Refund]
+```
+
+If a directional result has no stake on the winning side, the contract changes
+the final outcome to `INCONCLUSIVE`, making the position refundable instead of
+attempting a zero-denominator payout.
+
+## Market Rules
+
+| Rule                    | Contract behavior                                   |
+| ----------------------- | --------------------------------------------------- |
+| Supported instruments   | GBP/USD, USD/JPY, XAU/USD, XAG/USD                  |
+| Creation date format    | `YYYY-MM-DD`                                        |
+| Prediction Days         | Weekdays only                                       |
+| Future-date window      | After the current time and within 366 days          |
+| Betting closes          | Prediction Day at 00:00 UTC                         |
+| Prediction Day duration | 24 hours                                            |
+| Minimum bet             | 1 GEN per transaction                               |
+| Wallet cap              | 10 GEN cumulative per market                        |
+| Side switching          | Not allowed                                         |
+| Same-side top-up        | Allowed                                             |
+| Duplicate market        | Rejected for the same instrument and Prediction Day |
+| Creation fee            | None; `create_market` is not payable                |
+| Settlement              | Anyone may call it after `target_end`               |
+| Claims                  | After the market is closed                          |
+
+## Payouts and Refunds
+
+For a directional result, the contract calculates a proportional payout:
+
+```text
+payout = total pool × user's winning stake / total winning stake
+```
+
+A user on the losing side cannot claim. In an `INCONCLUSIVE` outcome, the
+user's original stake is returned. A claim marks the position as claimed, so a
+position cannot be claimed twice.
+
+## Live Market Experience
+
+The frontend has a separate display-data path for the market experience:
+
+- real current prices from FXRatesAPI
+- one-minute provider samples aggregated into fixed five-minute candles
+- chart history beginning at the market's real creation time
+- real provider gaps, with no fabricated weekend candles
+- a previous-trading-day reference line
+- a Prediction Day marker when that timestamp is visible
+- a live UP/DOWN preview during Prediction Day
+
+Live chart data is for presentation only. The final market result comes from
+the Intelligent Contract settlement process described above.
 
 ## Product Tour
 
-The four image slots below are prepared for manual screenshots from the current
-frontend. No screenshots are generated or fabricated in this repository. The
-real images will be added in a follow-up update.
+The current frontend in four views:
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/markets.png" alt="Vektor Markets page" />
+    </td>
+    <td width="50%">
+      <img src="docs/images/market-detail.png" alt="Vektor Market Detail page" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/create-market.png" alt="Vektor Create Market page" />
+    </td>
+    <td width="50%">
+      <img src="docs/images/activity.png" alt="Vektor Activity page" />
+    </td>
+  </tr>
+</table>
 
 ### Markets
 
-Screenshot path: `docs/images/markets.png` *(to be added in a follow-up update)*
-
-Discover live markets, pool positioning, real prices, lifecycle status, and the
-time remaining before Prediction Day.
+Browse daily FX and metals markets, live prices, pool positioning, and lifecycle timing.
 
 ### Market Detail
 
-Screenshot path: `docs/images/market-detail.png` *(to be added in a follow-up update)*
-
-Follow real five-minute movement from market creation through Prediction Day,
-with the live display kept separate from the final contract result.
+Follow real five-minute price movement, the previous-trading-day reference,
+market timing, and your position.
 
 ### Create Market
 
-Screenshot path: `docs/images/create-market.png` *(to be added in a follow-up update)*
+Choose an instrument and Prediction Day while Vektor derives the comparison
+date and betting deadline.
 
-Choose an instrument and Prediction Day. Vektor derives the comparison day and
-timing automatically.
+### Activity
 
-### Activity / Portfolio
-
-Screenshot path: `docs/images/activity.png` *(to be added in a follow-up update)*
-
-Track current positions, settlement actions, and claims directly from contract
-state rather than fabricated frontend history.
+Track current positions, settlement actions, and claim states directly from
+contract state.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
     U[User] --> F[Vektor Frontend]
-    F --> W[Injected Browser Wallet]
-    W --> G[GenLayer Bradbury]
-    G --> C[Vektor Intelligent Contract]
+    F --> W[Injected Wallet and GenLayerJS]
+    W --> C[Vektor Intelligent Contract]
     C --> V[GenLayer Validators]
     V --> S1[FXRatesAPI]
     V --> S2[Fawaz Currency API]
     S1 --> V
     S2 --> V
-    V --> C
-    M[FXRatesAPI Live Market Data] --> F
+    M[FXRatesAPI live prices] --> F
 ```
 
-The two FXRatesAPI paths have different roles:
+The wallet/GenLayerJS path reads and writes contract state. The FXRatesAPI
+frontend path supplies display prices and charts. Frontend chart data never
+settles a market.
 
-- **Frontend display path:** current prices and five-minute candles for the
-  market experience.
-- **Contract settlement path:** validator-executed source checks that produce
-  the authoritative market result.
+## Activity
 
-The frontend never passes chart values into settlement.
+Activity is reconstructed from current contract state rather than treated as
+a fabricated transaction log. The frontend uses paginated user market IDs,
+market records, user market status, claimable state, and due-market IDs.
 
-## Intelligent Settlement
-
-For each configured source, the settlement logic compares:
-
-```text
-previous-trading-day price
-              vs
-Prediction Day price
-```
-
-Each source independently derives UP or DOWN. GenLayer validators verify the
-evidence and the resulting direction.
-
-```mermaid
-flowchart TD
-    A[Settlement Called] --> B[Fetch FXRatesAPI Evidence]
-    A --> C[Fetch Fawaz Evidence]
-    B --> D[Compare Reference vs Prediction Day]
-    C --> E[Compare Reference vs Prediction Day]
-    D --> F{FX Direction}
-    E --> G{Fawaz Direction}
-    F --> H{Directions Agree?}
-    G --> H
-    H -->|UP| I[Close Market: UP]
-    H -->|DOWN| J[Close Market: DOWN]
-    H -->|No| K[Close Market: Refund]
-```
-
-The contract applies the final rule:
-
-```text
-FXRatesAPI = UP and Fawaz = UP       -> UP
-FXRatesAPI = DOWN and Fawaz = DOWN   -> DOWN
-Anything else                        -> Refund / INCONCLUSIVE
-```
-
-If the agreed directional result has no stake on the winning side, the
-contract converts that result to a refund-safe outcome.
-
-## Live Market Experience
-
-- FXRatesAPI provides the keyless frontend current-price feed.
-- The frontend requests real one-minute provider samples.
-- Samples are merged, deduplicated, and aggregated into fixed five-minute
-  OHLC candles.
-- Chart history begins at the market's real contract creation timestamp.
-- Provider/session gaps remain visible; weekend candles are never fabricated.
-- The previous-trading-day reference is shown as a separate horizontal line.
-- The Prediction Day start marker is rendered only when it lies inside the
-  visible chart viewport.
-- Live movement is shown as a preview and never determines settlement.
-
-## Market Lifecycle
-
-| Phase | User experience |
-| --- | --- |
-| Betting open | Stake on UP or DOWN until Prediction Day begins. |
-| Prediction day live | Betting has ended; the 24-hour observation period is in progress. |
-| Ready to settle | The day has ended and anyone may settle the open market. |
-| Settled | The contract has stored UP or DOWN and winners can claim. |
-| Refund | The contract could not confirm a directional result, so original stakes can be claimed back. |
-
-## Market Rules
-
-- Prediction Days are weekdays under the contract's previous-weekday rule.
-- Betting closes at Prediction Day `00:00 UTC`.
-- Prediction Day lasts 24 hours.
-- Settlement is available only after `target_end`.
-- Each bet transaction must be at least `1 GEN`.
-- A wallet may stake up to `10 GEN` cumulatively per market.
-- A wallet may choose one side and add only to that same side.
-- Market creation has no extra fee.
-- Market creation and settlement are permissionless.
-- Claims are made through the contract after settlement.
-- Refund outcomes return the original stake.
-
-## Payout Model
-
-For a directional result, the winning payout is proportional to the user's
-winning stake:
-
-```text
-user payout = total pool × user winning stake / total winning stake
-```
-
-Integer rounding can leave a small amount of dust. A refund returns the
-original stake. The frontend labels previews as estimates; the contract is
-authoritative.
+No `localStorage`, `sessionStorage`, IndexedDB history, fabricated timestamps,
+or synthetic events are used. A refresh or another device can reconstruct the
+same current positions and statuses from the contract.
 
 ## Trust Model
 
-| Component | What it does | What it cannot do |
-| --- | --- | --- |
-| Frontend | Displays state and sends user transactions | Cannot choose outcomes or settlement evidence |
-| Market creator | Selects an allowed instrument and Prediction Day | Cannot choose the result or override the contract |
-| Settlement caller | Calls `settle_market(market_id)` | Cannot submit a chosen price or direction |
-| FXRatesAPI / Fawaz | Provide external historical evidence | Neither source decides alone |
-| GenLayer validators | Independently verify evidence and direction | Cannot change user stakes |
-| Contract | Stores state and applies payout/refund rules | Does not trust frontend calculations |
+- Creators cannot choose final outcomes.
+- Settlement callers cannot provide a result or price.
+- Settlement sources are fixed in the contract.
+- GenLayer validators independently execute and verify settlement logic.
+- Source disagreement follows the contract's refund rules.
+- Frontend price data is not authoritative settlement evidence.
 
 ## Contract Interface
 
-The deployed production surface contains **4 writes, 15 views, and 19 total
-public methods**.
+The deployed contract exposes **4 writes, 15 views, and 19 total public
+methods**.
 
 ### Writes
 
 ```text
-create_market(instrument, target_date)
-place_bet(market_id, side)
-settle_market(market_id)
-claim_payout(market_id)
+create_market
+place_bet
+settle_market
+claim_payout
 ```
 
 ### Views
@@ -320,25 +318,26 @@ can_claim_payout
 validate_market_creation
 ```
 
-## Activity Architecture
+## Trustworthy Transaction UX
 
-Activity is reconstructed from current contract state using paginated user
-market IDs, market records, user market status, claimable state, and due-market
-IDs. It is deliberately a current-state status feed, not a pretend event log.
+The frontend shows writes through:
 
-There is no `localStorage`, `sessionStorage`, IndexedDB history, fabricated
-timestamp, synthetic event, or backend indexer behind Activity. A refresh,
-reconnect, or second device reconstructs the same state from the contract.
+```text
+Preparing → Awaiting wallet → Submitted → Processing → Completed
+```
+
+For frontend UX, completion means GenLayer has accepted successful execution
+and the accepted contract state has reconciled. The interface does not make
+users wait for the later `FINALIZED` state.
 
 ## Tech Stack
 
 - React and TypeScript
 - TanStack Start, Router, and Query
 - Vite and Tailwind CSS
-- Wagmi and Viem for injected wallet/account/network state
-- RainbowKit for wallet UI
+- Wagmi, Viem, and RainbowKit for injected wallet connection and wallet UI
 - GenLayerJS for Intelligent Contract reads and writes
-- FXRatesAPI for frontend live market display and configured settlement evidence
+- FXRatesAPI for frontend market display and configured settlement evidence
 - Fawaz Currency API for the second settlement source
 
 ## Repository Structure
@@ -367,65 +366,39 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The browser frontend requires the public contract address:
+Set the public contract address in `frontend/.env.local`:
 
 ```text
 VITE_VEKTOR_CONTRACT_ADDRESS=0x10a27a4e2B62AE20410365e7a861106E551ADd33
 ```
 
-The Bradbury RPC and chain configuration come from the checked-in GenLayer
-configuration. No FXRatesAPI key is required. A browser-injected wallet on
-Bradbury is required for writes; WalletConnect is not configured.
-
-Useful checks:
-
-```bash
-npx tsc --noEmit
-npm run lint
-npm run build
-```
+The Bradbury chain and RPC are configured in the frontend. No FXRatesAPI key
+is required. Writes require a browser-injected wallet connected to Bradbury.
 
 ## Deployment
 
-Vercel should use the `frontend` directory as its root directory:
+For Vercel, use:
 
 ```text
+Root directory:  frontend
 Install command: npm ci
 Build command:   npm run build
-Root directory:  frontend
 ```
 
-Set this public environment variable for Production, Preview, and Development:
-
-```text
-VITE_VEKTOR_CONTRACT_ADDRESS=0x10a27a4e2B62AE20410365e7a861106E551ADd33
-```
-
-No private credentials or market-data API key belong in the frontend
-environment.
-
-## Transaction UX
-
-Writes move through a visible lifecycle:
-
-```text
-Preparing → Awaiting wallet → Submitted → Processing → Completed
-```
-
-For normal frontend UX, completion means GenLayer has reached `ACCEPTED`, the
-execution result is `FINISHED_WITH_RETURN`, and accepted contract state has
-reconciled. The UI does not keep users waiting for `FINALIZED`.
+Set `VITE_VEKTOR_CONTRACT_ADDRESS` for Production, Preview, and Development.
+It is public browser configuration; do not add private credentials.
 
 ## Limitations and Current Scope
 
 - Vektor currently runs on GenLayer Bradbury Testnet.
-- The market universe is intentionally limited to four instruments.
+- The market universe is limited to four instruments.
+- Prediction Days use the contract's weekday rule rather than an exchange-holiday calendar.
 - Settlement requires agreement between the two configured sources.
-- Provider downtime can delay settlement; it does not create a frontend result.
-- Live chart data is presentation data, not settlement evidence supplied by the user.
-- Activity reconstructs current positions and statuses, not a complete historical transaction log.
+- Provider availability can delay settlement attempts.
+- The frontend live feed is display-only.
+- Activity reconstructs current state, not a complete chronological event history.
 - There is no centralized event indexer.
 
-Vektor turns daily FX and metals movement into simple, permissionless markets
-while GenLayer handles the hard part: independently verifying real-world
-outcomes before the contract applies them.
+Vektor makes daily FX and metals movement simple to predict while GenLayer
+provides the independent verification needed to apply real-world results on a
+contract.
